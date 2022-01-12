@@ -34,8 +34,13 @@ type Goal = {
   onExit: Sentence;
 };
 
+type ContextSentence = {
+  sentence: Sentence;
+  exported: boolean;
+};
+
 type Context = {
-  sentences: List<Sentence>;
+  sentences: List<ContextSentence>;
   goal: Goal | undefined;
   freeVariableCount: bigint;
   exportedVariableCount: bigint;
@@ -75,9 +80,9 @@ function startInteractiveSession() {
   const getCurrentContext = () => contexts[contexts.length - 1];
 
   const retrieve = (
-    sentences: List<Sentence>,
+    sentences: List<ContextSentence>,
     index: bigint
-  ): Failed | Sentence => {
+  ): Failed | ContextSentence => {
     if (index > Number.MAX_SAFE_INTEGER || index < 0) return "failed";
     return sentences.get(Number(index), "failed");
   };
@@ -120,9 +125,9 @@ function startInteractiveSession() {
         if (y.type === "bound" && y.index >= binderCount) isValid = false;
         if (x.type === "free" && x.index >= freeVariableCount) isValid = false;
         if (y.type === "free" && y.index >= freeVariableCount) isValid = false;
-        if (x.type === "free" && x.index >= exportedVariableCount)
+        if (x.type === "exported" && x.index >= exportedVariableCount)
           isValid = false;
-        if (y.type === "free" && y.index >= exportedVariableCount)
+        if (y.type === "exported" && y.index >= exportedVariableCount)
           isValid = false;
 
         return;
@@ -175,10 +180,13 @@ function startInteractiveSession() {
 
       if (candidate === "failed") return "failed";
 
-      if (identical(goal.inContext, candidate)) {
+      if (identical(goal.inContext, candidate.sentence)) {
         contexts.pop();
         const context = getCurrentContext();
-        context.sentences = context.sentences.push(goal.onExit);
+        context.sentences = context.sentences.push({
+          sentence: goal.onExit,
+          exported: false,
+        });
         return BigInt(context.sentences.size - 1);
       }
 
@@ -191,9 +199,12 @@ function startInteractiveSession() {
         return "failed";
 
       getCurrentContext().sentences = sentences.push({
-        type: "or",
-        a: sentence,
-        b: { type: "not", content: sentence },
+        sentence: {
+          type: "or",
+          a: sentence,
+          b: { type: "not", content: sentence },
+        },
+        exported: false,
       });
 
       return BigInt(sentences.size);
@@ -248,9 +259,12 @@ function startInteractiveSession() {
       const { sentences } = getCurrentContext();
       const sentence = retrieve(sentences, sentenceIndex);
       if (sentence === "failed") return "failed";
-      if (sentence.type !== "and") return "failed";
+      if (sentence.sentence.type !== "and") return "failed";
 
-      getCurrentContext().sentences = sentences.push(sentence.a);
+      getCurrentContext().sentences = sentences.push({
+        sentence: sentence.sentence.a,
+        exported: false,
+      });
 
       return BigInt(sentences.size);
     },
@@ -258,9 +272,12 @@ function startInteractiveSession() {
       const { sentences } = getCurrentContext();
       const sentence = retrieve(sentences, sentenceIndex);
       if (sentence === "failed") return "failed";
-      if (sentence.type !== "and") return "failed";
+      if (sentence.sentence.type !== "and") return "failed";
 
-      getCurrentContext().sentences = sentences.push(sentence.b);
+      getCurrentContext().sentences = sentences.push({
+        sentence: sentence.sentence.b,
+        exported: false,
+      });
 
       return BigInt(sentences.size);
     },
@@ -275,7 +292,7 @@ function startInteractiveSession() {
       contexts.push({
         freeVariableCount,
         exportedVariableCount,
-        sentences: sentences.push(a),
+        sentences: sentences.push({ sentence: a, exported: false }),
         goal: {
           inContext: b,
           onExit: { type: "imply", a, b },
@@ -294,10 +311,13 @@ function startInteractiveSession() {
       const y = retrieve(sentences, b);
       if (x === "failed" || y === "failed") return "failed";
 
-      if (y.type !== "imply") return "failed";
-      if (!identical(y.a, x)) return "failed";
+      if (y.sentence.type !== "imply") return "failed";
+      if (!identical(y.sentence.a, x.sentence)) return "failed";
 
-      getCurrentContext().sentences = sentences.push(y.b);
+      getCurrentContext().sentences = sentences.push({
+        sentence: y.sentence.b,
+        exported: false,
+      });
 
       return BigInt(sentences.size);
     },
@@ -311,9 +331,12 @@ function startInteractiveSession() {
       if (x === "failed" || y === "failed") return "failed";
 
       getCurrentContext().sentences = sentences.push({
-        type: "and",
-        a: x,
-        b: y,
+        sentence: {
+          type: "and",
+          a: x.sentence,
+          b: y.sentence,
+        },
+        exported: false,
       });
 
       return BigInt(sentences.size);
@@ -330,7 +353,10 @@ function startInteractiveSession() {
       const x = retrieve(sentences, a);
       if (x === "failed") return "failed";
 
-      getCurrentContext().sentences = sentences.push({ type: "or", a: x, b });
+      getCurrentContext().sentences = sentences.push({
+        sentence: { type: "or", a: x.sentence, b },
+        exported: false,
+      });
 
       return BigInt(sentences.size);
     },
@@ -346,7 +372,10 @@ function startInteractiveSession() {
       const y = retrieve(sentences, b);
       if (y === "failed") return "failed";
 
-      getCurrentContext().sentences = sentences.push({ type: "or", a, b: y });
+      getCurrentContext().sentences = sentences.push({
+        sentence: { type: "or", a, b: y.sentence },
+        exported: false,
+      });
 
       return BigInt(sentences.size);
     },
@@ -366,13 +395,16 @@ function startInteractiveSession() {
         return "failed";
 
       getCurrentContext().sentences = sentences.push({
-        type: "imply",
-        a: {
-          type: "and",
-          a: { type: "imply", a: a, b: c },
-          b: { type: "imply", a: b, b: c },
+        sentence: {
+          type: "imply",
+          a: {
+            type: "and",
+            a: { type: "imply", a: a, b: c },
+            b: { type: "imply", a: b, b: c },
+          },
+          b: { type: "imply", a: { type: "or", a, b }, b: c },
         },
-        b: { type: "imply", a: { type: "or", a, b }, b: c },
+        exported: false,
       });
 
       return BigInt(sentences.size);
@@ -382,15 +414,18 @@ function startInteractiveSession() {
 
       const x = retrieve(sentences, a);
       if (x === "failed") return "failed";
-      if (x.type !== "not") return "failed";
-      if (x.content.type !== "forall") return "failed";
+      if (x.sentence.type !== "not") return "failed";
+      if (x.sentence.content.type !== "forall") return "failed";
 
       getCurrentContext().sentences = sentences.push({
-        type: "exists",
-        content: {
-          type: "not",
-          content: x.content.content,
+        sentence: {
+          type: "exists",
+          content: {
+            type: "not",
+            content: x.sentence.content.content,
+          },
         },
+        exported: false,
       });
 
       return BigInt(sentences.size);
@@ -400,15 +435,18 @@ function startInteractiveSession() {
 
       const x = retrieve(sentences, a);
       if (x === "failed") return "failed";
-      if (x.type !== "not") return "failed";
-      if (x.content.type !== "exists") return "failed";
+      if (x.sentence.type !== "not") return "failed";
+      if (x.sentence.content.type !== "exists") return "failed";
 
       getCurrentContext().sentences = sentences.push({
-        type: "forall",
-        content: {
-          type: "not",
-          content: x.content.content,
+        sentence: {
+          type: "forall",
+          content: {
+            type: "not",
+            content: x.sentence.content.content,
+          },
         },
+        exported: false,
       });
 
       return BigInt(sentences.size);
@@ -427,14 +465,17 @@ function startInteractiveSession() {
       const y = retrieve(sentences, b);
 
       if (x === "failed" || y === "failed") return "failed";
-      if (y.type !== "not") return "failed";
+      if (y.sentence.type !== "not") return "failed";
 
-      if (!identical(x, y.content)) return "failed";
+      if (!identical(x.sentence, y.sentence.content)) return "failed";
 
       if (!validateSentence(c, freeVariableCount, exportedVariableCount))
         return "failed";
 
-      getCurrentContext().sentences = sentences.push(c);
+      getCurrentContext().sentences = sentences.push({
+        sentence: c,
+        exported: false,
+      });
 
       return BigInt(sentences.size);
     },
@@ -443,7 +484,13 @@ function startInteractiveSession() {
       console.log(
         contexts.map((x) => ({
           freeVariableCount: x.freeVariableCount,
-          sentences: x.sentences.map((a) => serializeSentence(a)).toJS(),
+          sentences: x.sentences
+            .map(
+              (a) =>
+                (a.exported ? "[EXPORTED] " : "") +
+                serializeSentence(a.sentence)
+            )
+            .toJS(),
           goal:
             x.goal === undefined
               ? undefined
