@@ -87,7 +87,6 @@ function startInteractiveSession() {
     return sentences.get(Number(index), "failed");
   };
 
-  // Adapted from https://github.com/GoogleChromeLabs/jsbi/issues/30#issuecomment-521460510
   const identical = (a: Sentence, b: Sentence): boolean =>
     serializeSentence(a) === serializeSentence(b);
 
