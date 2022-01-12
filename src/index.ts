@@ -1,13 +1,33 @@
 import { List } from "immutable";
 
-type Variable = { type: "free" | "bound"; index: bigint };
+type Variable = { type: "free" | "bound" | "exported"; index: bigint };
 
 type Sentence =
   | { type: "forall"; content: Sentence }
   | { type: "exists"; content: Sentence }
-  | { type: "and" | "or" | "imply"; a: Sentence; b: Sentence }
+  | { type: "and"; a: Sentence; b: Sentence }
+  | { type: "or"; a: Sentence; b: Sentence }
+  | { type: "imply"; a: Sentence; b: Sentence }
   | { type: "not"; content: Sentence }
   | { type: "member"; a: Variable; b: Variable };
+
+const serializeSentence = (a: Sentence) => {
+  const dfs = (a: Sentence): string => {
+    if (a.type === "forall" || a.type === "exists" || a.type === "not")
+      return `(${a.type} ${dfs(a.content)})`;
+    if (a.type === "and" || a.type === "or" || a.type === "imply")
+      return `(${a.type} ${dfs(a.a)} ${dfs(a.b)})`;
+
+    const printVariable = (x: Variable) => {
+      if (x.type === "free") return `[${x.index}]`;
+      return `${x.index}`;
+    };
+
+    return `(${a.type} ${printVariable(a.a)} ${printVariable(a.b)})`;
+  };
+
+  return dfs(a);
+};
 
 type Goal = {
   inContext: Sentence;
@@ -18,6 +38,7 @@ type Context = {
   sentences: List<Sentence>;
   goal: Goal | undefined;
   freeVariableCount: bigint;
+  exportedVariableCount: bigint;
 };
 
 type SentenceIndex = bigint;
@@ -33,12 +54,13 @@ type VariableFactory = (a: bigint) => Variable;
 const forall: SentenceFactory = (x) => ({ type: "forall", content: x });
 const exists: SentenceFactory = (x) => ({ type: "exists", content: x });
 const and: SentenceFactory2 = (a, b) => ({ type: "and", a, b });
-const or: SentenceFactory2 = (a, b) => ({ type: "and", a, b });
-const imply: SentenceFactory2 = (a, b) => ({ type: "and", a, b });
-const not: SentenceFactory = (x) => ({ type: "exists", content: x });
+const or: SentenceFactory2 = (a, b) => ({ type: "or", a, b });
+const imply: SentenceFactory2 = (a, b) => ({ type: "imply", a, b });
+const not: SentenceFactory = (x) => ({ type: "not", content: x });
 const member: SentenceFactory3 = (a, b) => ({ type: "member", a, b });
 const free: VariableFactory = (a) => ({ type: "free", index: a });
 const bound: VariableFactory = (a) => ({ type: "bound", index: a });
+const exported: VariableFactory = (a) => ({ type: "exported", index: a });
 
 function startInteractiveSession() {
   const contexts: Context[] = [
@@ -55,8 +77,9 @@ function startInteractiveSession() {
     return sentences.get(Number(index), "failed");
   };
 
+  // Adapted from https://github.com/GoogleChromeLabs/jsbi/issues/30#issuecomment-521460510
   const identical = (a: Sentence, b: Sentence): boolean =>
-    JSON.stringify(a) === JSON.stringify(b);
+    serializeSentence(a) === serializeSentence(b);
 
   const validateSentence = (
     a: Sentence,
@@ -116,11 +139,16 @@ function startInteractiveSession() {
         return { type: "member", a: replace(a.a), b: replace(a.b) };
       }
 
-      if (a.type === "forall" || a.type === "exists" || a.type === "not")
+      if (a.type === "forall" || a.type === "exists")
         return { type: a.type, content: dfs(a.content, depth + 1n) };
 
+      if (a.type === "not")
+        return { type: a.type, content: dfs(a.content, depth) };
+
       if (a.type === "and" || a.type === "or" || a.type === "imply")
-        return { type: a.type, a: dfs(a.a), b: dfs(a.b, depth + 1n) };
+        return { type: a.type, a: dfs(a.a, depth), b: dfs(a.b, depth) };
+
+      return a;
     };
 
     return dfs(a.content);
@@ -141,7 +169,7 @@ function startInteractiveSession() {
         contexts.pop();
         const context = getCurrentContext();
         context.sentences = context.sentences.push(goal.onExit);
-        return BigInt(sentences.size);
+        return BigInt(context.sentences.size - 1);
       }
 
       return "failed";
@@ -177,6 +205,9 @@ function startInteractiveSession() {
 
       return "successful";
     },
+    substituteIntoForall: (sentenceIndex: SentenceIndex): SentenceIndex | Failed => {
+
+    }
     exists: (sentence: Sentence, variable: Variable): Successful | Failed => {
       const { sentences, freeVariableCount } = getCurrentContext();
       if (!validateSentence(sentence, freeVariableCount)) return "failed";
@@ -218,7 +249,7 @@ function startInteractiveSession() {
 
       return BigInt(sentences.size);
     },
-    imply: (a: Sentence, b: Sentence): Successful | Failed => {
+    imply: (a: Sentence, b: Sentence): SentenceIndex | Failed => {
       const { sentences, freeVariableCount } = getCurrentContext();
       if (!validateSentence(a, freeVariableCount)) return "failed";
       if (!validateSentence(b, freeVariableCount)) return "failed";
@@ -231,6 +262,8 @@ function startInteractiveSession() {
           onExit: { type: "imply", a, b },
         },
       });
+
+      return BigInt(sentences.size);
     },
     // If a represents P and b represents P => Q, this rule produces a sentence that represents Q.
     modusPonens: (
@@ -376,7 +409,97 @@ function startInteractiveSession() {
 
       return BigInt(sentences.size);
     },
+    // This function is primarily for debugging.
+    getState: () => {
+      console.log(
+        contexts.map((x) => ({
+          freeVariableCount: x.freeVariableCount,
+          sentences: x.sentences.map((a) => serializeSentence(a)).toJS(),
+          goal:
+            x.goal === undefined
+              ? undefined
+              : {
+                  inContext: serializeSentence(x.goal.inContext),
+                  onExit: serializeSentence(x.goal.onExit),
+                },
+        }))
+      );
+    },
   };
 }
 
 const session = startInteractiveSession();
+session.forall(
+  forall(
+    forall(
+      forall(
+        imply(
+          imply(member(bound(1n), bound(0n)), member(bound(2n), bound(0n))),
+          or(not(member(bound(1n), bound(0n))), member(bound(2n), bound(0n)))
+        )
+      )
+    )
+  )
+);
+session.forall(
+  forall(
+    forall(
+      imply(
+        imply(member(bound(1n), bound(0n)), member(free(0n), bound(0n))),
+        or(not(member(bound(1n), bound(0n))), member(free(0n), bound(0n)))
+      )
+    )
+  )
+);
+session.forall(
+  forall(
+    imply(
+      imply(member(free(1n), bound(0n)), member(free(0n), bound(0n))),
+      or(not(member(free(1n), bound(0n))), member(free(0n), bound(0n)))
+    )
+  )
+);
+
+const P = member(free(1n), free(2n));
+const Q = member(free(0n), free(2n));
+
+const h = session.excludedMiddle(P);
+const h1 = session.disjunctionImply(P, not(P), or(not(P), Q));
+const h2 = session.imply(imply(P, Q), or(not(P), Q));
+if (h2 === "failed") throw new Error("failed");
+const h3 = (() => {
+  const h3 = session.imply(P, or(not(P), Q));
+  if (h3 === "failed") throw new Error("failed");
+  const h4 = session.modusPonens(h3, h2);
+  if (h4 === "failed") throw new Error("failed");
+  const h5 = session.introduceDisjunctionRight(not(P), h4);
+  if (h5 === "failed") throw new Error("failed");
+  return session.resolveGoal(h5);
+})();
+const h4 = (() => {
+  const h3 = session.imply(not(P), or(not(P), Q));
+  if (h3 === "failed") throw new Error("failed");
+  const h4 = session.introduceDisjunctionLeft(h3, Q);
+  if (h4 === "failed") throw new Error("failed");
+  return session.resolveGoal(h4);
+})();
+if (h3 === "failed") throw new Error("failed");
+if (h4 === "failed") throw new Error("failed");
+const h5 = session.introduceConjunction(h3, h4);
+if (h5 === "failed") throw new Error("failed");
+if (h1 === "failed") throw new Error("failed");
+const h6 = session.modusPonens(h5, h1);
+if (h6 === "failed") throw new Error("failed");
+if (h === "failed") throw new Error("failed");
+const h7 = session.modusPonens(h, h6);
+if (h7 === "failed") throw new Error("failed");
+const m = session.resolveGoal(h7);
+if (m === "failed") throw new Error("failed");
+const n = session.resolveGoal(m);
+if (n === "failed") throw new Error("failed");
+const o = session.resolveGoal(n);
+if (o === "failed") throw new Error("failed");
+const p = session.resolveGoal(o);
+if (p === "failed") throw new Error("failed");
+
+session.getState();
