@@ -64,7 +64,12 @@ const exported: VariableFactory = (a) => ({ type: "exported", index: a });
 
 function startInteractiveSession() {
   const contexts: Context[] = [
-    { sentences: List(), goal: undefined, freeVariableCount: 0n },
+    {
+      sentences: List(),
+      goal: undefined,
+      freeVariableCount: 0n,
+      exportedVariableCount: 0n,
+    },
   ];
 
   const getCurrentContext = () => contexts[contexts.length - 1];
@@ -83,7 +88,8 @@ function startInteractiveSession() {
 
   const validateSentence = (
     a: Sentence,
-    freeVariableCount: bigint
+    freeVariableCount: bigint,
+    exportedVariableCount: bigint
   ): boolean => {
     let isValid = true;
 
@@ -114,6 +120,10 @@ function startInteractiveSession() {
         if (y.type === "bound" && y.index >= binderCount) isValid = false;
         if (x.type === "free" && x.index >= freeVariableCount) isValid = false;
         if (y.type === "free" && y.index >= freeVariableCount) isValid = false;
+        if (x.type === "free" && x.index >= exportedVariableCount)
+          isValid = false;
+        if (y.type === "free" && y.index >= exportedVariableCount)
+          isValid = false;
 
         return;
       }
@@ -175,8 +185,10 @@ function startInteractiveSession() {
       return "failed";
     },
     excludedMiddle: (sentence: Sentence): bigint | Failed => {
-      const { sentences, freeVariableCount } = getCurrentContext();
-      if (!validateSentence(sentence, freeVariableCount)) return "failed";
+      const { sentences, freeVariableCount, exportedVariableCount } =
+        getCurrentContext();
+      if (!validateSentence(sentence, freeVariableCount, exportedVariableCount))
+        return "failed";
 
       getCurrentContext().sentences = sentences.push({
         type: "or",
@@ -187,8 +199,10 @@ function startInteractiveSession() {
       return BigInt(sentences.size);
     },
     forall: (sentence: Sentence): Successful | Failed => {
-      const { sentences, freeVariableCount } = getCurrentContext();
-      if (!validateSentence(sentence, freeVariableCount)) return "failed";
+      const { sentences, freeVariableCount, exportedVariableCount } =
+        getCurrentContext();
+      if (!validateSentence(sentence, freeVariableCount, exportedVariableCount))
+        return "failed";
       if (sentence.type !== "forall") return "failed";
 
       contexts.push({
@@ -200,17 +214,17 @@ function startInteractiveSession() {
           }),
         },
         freeVariableCount: freeVariableCount + 1n,
+        exportedVariableCount,
         sentences,
       });
 
       return "successful";
     },
-    substituteIntoForall: (sentenceIndex: SentenceIndex): SentenceIndex | Failed => {
-
-    }
     exists: (sentence: Sentence, variable: Variable): Successful | Failed => {
-      const { sentences, freeVariableCount } = getCurrentContext();
-      if (!validateSentence(sentence, freeVariableCount)) return "failed";
+      const { sentences, freeVariableCount, exportedVariableCount } =
+        getCurrentContext();
+      if (!validateSentence(sentence, freeVariableCount, exportedVariableCount))
+        return "failed";
       if (sentence.type !== "exists") return "failed";
 
       // The variable must be a free variable in the local context.
@@ -224,6 +238,7 @@ function startInteractiveSession() {
           inContext: substituteIntoBinder(sentence, variable),
         },
         freeVariableCount,
+        exportedVariableCount,
         sentences,
       });
 
@@ -250,12 +265,16 @@ function startInteractiveSession() {
       return BigInt(sentences.size);
     },
     imply: (a: Sentence, b: Sentence): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount } = getCurrentContext();
-      if (!validateSentence(a, freeVariableCount)) return "failed";
-      if (!validateSentence(b, freeVariableCount)) return "failed";
+      const { sentences, freeVariableCount, exportedVariableCount } =
+        getCurrentContext();
+      if (!validateSentence(a, freeVariableCount, exportedVariableCount))
+        return "failed";
+      if (!validateSentence(b, freeVariableCount, exportedVariableCount))
+        return "failed";
 
       contexts.push({
         freeVariableCount,
+        exportedVariableCount,
         sentences: sentences.push(a),
         goal: {
           inContext: b,
@@ -303,8 +322,10 @@ function startInteractiveSession() {
       a: SentenceIndex,
       b: Sentence
     ): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount } = getCurrentContext();
-      if (!validateSentence(b, freeVariableCount)) return "failed";
+      const { sentences, freeVariableCount, exportedVariableCount } =
+        getCurrentContext();
+      if (!validateSentence(b, freeVariableCount, exportedVariableCount))
+        return "failed";
 
       const x = retrieve(sentences, a);
       if (x === "failed") return "failed";
@@ -317,8 +338,10 @@ function startInteractiveSession() {
       a: Sentence,
       b: SentenceIndex
     ): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount } = getCurrentContext();
-      if (!validateSentence(a, freeVariableCount)) return "failed";
+      const { sentences, freeVariableCount, exportedVariableCount } =
+        getCurrentContext();
+      if (!validateSentence(a, freeVariableCount, exportedVariableCount))
+        return "failed";
 
       const y = retrieve(sentences, b);
       if (y === "failed") return "failed";
@@ -333,10 +356,14 @@ function startInteractiveSession() {
       b: Sentence,
       c: Sentence
     ): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount } = getCurrentContext();
-      if (!validateSentence(a, freeVariableCount)) return "failed";
-      if (!validateSentence(b, freeVariableCount)) return "failed";
-      if (!validateSentence(c, freeVariableCount)) return "failed";
+      const { sentences, freeVariableCount, exportedVariableCount } =
+        getCurrentContext();
+      if (!validateSentence(a, freeVariableCount, exportedVariableCount))
+        return "failed";
+      if (!validateSentence(b, freeVariableCount, exportedVariableCount))
+        return "failed";
+      if (!validateSentence(c, freeVariableCount, exportedVariableCount))
+        return "failed";
 
       getCurrentContext().sentences = sentences.push({
         type: "imply",
@@ -393,7 +420,8 @@ function startInteractiveSession() {
       b: SentenceIndex,
       c: Sentence
     ): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount } = getCurrentContext();
+      const { sentences, freeVariableCount, exportedVariableCount } =
+        getCurrentContext();
 
       const x = retrieve(sentences, a);
       const y = retrieve(sentences, b);
@@ -403,7 +431,8 @@ function startInteractiveSession() {
 
       if (!identical(x, y.content)) return "failed";
 
-      if (!validateSentence(c, freeVariableCount)) return "failed";
+      if (!validateSentence(c, freeVariableCount, exportedVariableCount))
+        return "failed";
 
       getCurrentContext().sentences = sentences.push(c);
 
