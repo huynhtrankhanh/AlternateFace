@@ -1,6 +1,9 @@
 import { List } from "immutable";
 
-type Variable = { type: "free" | "bound" | "exported"; index: bigint };
+type SentenceIndex = bigint;
+type Variable =
+  | { type: "free" | "bound"; index: bigint }
+  | { type: "witness of exported existential"; sentenceIndex: SentenceIndex };
 
 type Sentence =
   | { type: "forall"; content: Sentence }
@@ -18,9 +21,13 @@ const serializeSentence = (a: Sentence) => {
     if (a.type === "and" || a.type === "or" || a.type === "imply")
       return `(${a.type} ${dfs(a.a)} ${dfs(a.b)})`;
 
-    const printVariable = (x: Variable) => {
-      if (x.type === "free") return `[${x.index}]`;
-      return `${x.index}`;
+    const printVariable = (x: Variable): string => {
+      const { type } = x;
+      if (type === "free") return `[${x.index}]`;
+      if (type === "witness of exported existential")
+        return `(W${x.sentenceIndex})`;
+      if (type === "bound") return `${x.index}`;
+      throw new Error(`This shouldn't happen. Unhandled type: ${type}`);
     };
 
     return `(${a.type} ${printVariable(a.a)} ${printVariable(a.b)})`;
@@ -43,10 +50,9 @@ type Context = {
   sentences: List<ContextSentence>;
   goal: Goal | undefined;
   freeVariableCount: bigint;
-  exportedVariableCount: bigint;
 };
 
-type SentenceIndex = bigint;
+type WitnessIndex = bigint;
 
 type Successful = "successful";
 type Failed = "failed";
@@ -65,7 +71,10 @@ const not: SentenceFactory = (x) => ({ type: "not", content: x });
 const member: SentenceFactory3 = (a, b) => ({ type: "member", a, b });
 const free: VariableFactory = (a) => ({ type: "free", index: a });
 const bound: VariableFactory = (a) => ({ type: "bound", index: a });
-const exported: VariableFactory = (a) => ({ type: "exported", index: a });
+const exported: VariableFactory = (a) => ({
+  type: "witness of exported existential",
+  sentenceIndex: a,
+});
 
 function startInteractiveSession() {
   const contexts: Context[] = [
@@ -73,9 +82,41 @@ function startInteractiveSession() {
       sentences: List(),
       goal: undefined,
       freeVariableCount: 0n,
-      exportedVariableCount: 0n,
     },
   ];
+
+  const exportedSentences = (() => {
+    const exportedSentences = new Set<string>();
+
+    const add = (sentence: Sentence) => {
+      exportedSentences.add(serializeSentence(sentence));
+    };
+
+    const isPresent = (sentence: Sentence): boolean =>
+      exportedSentences.has(serializeSentence(sentence));
+
+    return { add, isPresent };
+  })();
+
+  // This function assumes that the sentence is already valid.
+  // This is true for all sentences in the contexts.
+  // A sentence can be exported if and only if it only refers to exported variables
+  // and bound variables.
+  const canExportSentence = (sentence: Sentence): boolean => {
+    const dfs = (a: Sentence): boolean => {
+      if (a.type === "forall" || a.type === "exists" || a.type === "not")
+        return dfs(a.content);
+      if (a.type === "and" || a.type === "or" || a.type === "imply")
+        return dfs(a.a) && dfs(a.b);
+
+      const isAcceptable = (x: Variable) =>
+        x.type === "bound" || x.type === "witness of exported existential";
+
+      return isAcceptable(a.a) && isAcceptable(a.b);
+    };
+
+    return dfs(sentence);
+  };
 
   const getCurrentContext = () => contexts[contexts.length - 1];
 
@@ -90,11 +131,9 @@ function startInteractiveSession() {
   const identical = (a: Sentence, b: Sentence): boolean =>
     serializeSentence(a) === serializeSentence(b);
 
-  const validateSentence = (
-    a: Sentence,
-    freeVariableCount: bigint,
-    exportedVariableCount: bigint
-  ): boolean => {
+  const validateSentence = (a: Sentence): boolean => {
+    const { freeVariableCount, sentences } = getCurrentContext();
+
     let isValid = true;
 
     const dfs = (a: Sentence, binderCount: bigint) => {
@@ -118,16 +157,36 @@ function startInteractiveSession() {
         const x = a.a;
         const y = a.b;
 
-        if (x.index < 0n) isValid = false;
-        if (y.index < 0n) isValid = false;
+        if (x.type !== "witness of exported existential" && x.index < 0n)
+          isValid = false;
+        if (y.type !== "witness of exported existential" && y.index < 0n)
+          isValid = false;
+        if (
+          x.type === "witness of exported existential" &&
+          x.sentenceIndex < 0n
+        )
+          isValid = false;
+        if (
+          y.type === "witness of exported existential" &&
+          y.sentenceIndex < 0n
+        )
+          isValid = false;
         if (x.type === "bound" && x.index >= binderCount) isValid = false;
         if (y.type === "bound" && y.index >= binderCount) isValid = false;
         if (x.type === "free" && x.index >= freeVariableCount) isValid = false;
         if (y.type === "free" && y.index >= freeVariableCount) isValid = false;
-        if (x.type === "exported" && x.index >= exportedVariableCount)
-          isValid = false;
-        if (y.type === "exported" && y.index >= exportedVariableCount)
-          isValid = false;
+        if (x.type === "witness of exported existential") {
+          const sentence = retrieve(sentences, x.sentenceIndex);
+          if (sentence === "failed") isValid = false;
+          else if (!sentence.exported) isValid = false;
+          else if (sentence.sentence.type !== "exists") isValid = false;
+        }
+        if (y.type === "witness of exported existential") {
+          const sentence = retrieve(sentences, y.sentenceIndex);
+          if (sentence === "failed") isValid = false;
+          else if (!sentence.exported) isValid = false;
+          else if (sentence.sentence.type !== "exists") isValid = false;
+        }
 
         return;
       }
@@ -168,6 +227,30 @@ function startInteractiveSession() {
     return dfs(a.content);
   };
 
+  const isFreeInContext = (variable: Variable): boolean => {
+    const { freeVariableCount } = getCurrentContext();
+
+    if (variable.type !== "free") return false;
+    if (variable.index < 0n || variable.index >= freeVariableCount)
+      return false;
+    return true;
+  };
+
+  const isExportedInContext = (variable: Variable): boolean => {
+    const { sentences } = getCurrentContext();
+
+    if (variable.type !== "witness of exported existential") return false;
+    if (variable.sentenceIndex < 0n) return false;
+    const sentence = retrieve(sentences, variable.sentenceIndex);
+    if (sentence === "failed") return false;
+    if (!sentence.exported) return false;
+    if (sentence.sentence.type !== "exists") return false;
+    return true;
+  };
+
+  const isValidUnboundVariable = (variable: Variable): boolean =>
+    isFreeInContext(variable) || isExportedInContext(variable);
+
   return {
     resolveGoal: (sentenceIndex: SentenceIndex): SentenceIndex | Failed => {
       const { goal, sentences } = getCurrentContext();
@@ -192,10 +275,8 @@ function startInteractiveSession() {
       return "failed";
     },
     excludedMiddle: (sentence: Sentence): bigint | Failed => {
-      const { sentences, freeVariableCount, exportedVariableCount } =
-        getCurrentContext();
-      if (!validateSentence(sentence, freeVariableCount, exportedVariableCount))
-        return "failed";
+      const { sentences } = getCurrentContext();
+      if (!validateSentence(sentence)) return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: {
@@ -209,10 +290,8 @@ function startInteractiveSession() {
       return BigInt(sentences.size);
     },
     forall: (sentence: Sentence): Successful | Failed => {
-      const { sentences, freeVariableCount, exportedVariableCount } =
-        getCurrentContext();
-      if (!validateSentence(sentence, freeVariableCount, exportedVariableCount))
-        return "failed";
+      const { sentences, freeVariableCount } = getCurrentContext();
+      if (!validateSentence(sentence)) return "failed";
       if (sentence.type !== "forall") return "failed";
 
       contexts.push({
@@ -224,23 +303,34 @@ function startInteractiveSession() {
           }),
         },
         freeVariableCount: freeVariableCount + 1n,
-        exportedVariableCount,
         sentences,
       });
 
       return "successful";
     },
+    substituteIntoForall: (
+      sentenceIndex: SentenceIndex,
+      variable: Variable
+    ): SentenceIndex | Failed => {
+      const { sentences } = getCurrentContext();
+      const sentence = retrieve(sentences, sentenceIndex);
+      if (sentence === "failed") return "failed";
+      if (sentence.sentence.type !== "forall") return "failed";
+      if (!isValidUnboundVariable(variable)) return "failed";
+
+      getCurrentContext().sentences = sentences.push({
+        exported: false,
+        sentence: substituteIntoBinder(sentence.sentence, variable),
+      });
+
+      return BigInt(sentences.size);
+    },
     exists: (sentence: Sentence, variable: Variable): Successful | Failed => {
-      const { sentences, freeVariableCount, exportedVariableCount } =
-        getCurrentContext();
-      if (!validateSentence(sentence, freeVariableCount, exportedVariableCount))
-        return "failed";
+      const { sentences, freeVariableCount } = getCurrentContext();
+      if (!validateSentence(sentence)) return "failed";
       if (sentence.type !== "exists") return "failed";
 
-      // The variable must be a free variable in the local context.
-      if (variable.type !== "free") return "failed";
-      if (variable.index < 0n || variable.index >= freeVariableCount)
-        return "failed";
+      if (!isValidUnboundVariable(variable)) return "failed";
 
       contexts.push({
         goal: {
@@ -248,9 +338,53 @@ function startInteractiveSession() {
           inContext: substituteIntoBinder(sentence, variable),
         },
         freeVariableCount,
-        exportedVariableCount,
         sentences,
       });
+
+      return "successful";
+    },
+    getWitness: (
+      sentenceIndex: SentenceIndex
+    ):
+      | { witnessIndex: WitnessIndex; sentenceIndex: SentenceIndex }
+      | Failed => {
+      const { sentences, freeVariableCount } = getCurrentContext();
+      const sentence = retrieve(sentences, sentenceIndex);
+      if (sentence === "failed") return "failed";
+      if (sentence.sentence.type !== "exists") return "failed";
+
+      getCurrentContext().sentences = sentences.push({
+        sentence: substituteIntoBinder(
+          sentence.sentence,
+          free(freeVariableCount)
+        ),
+        exported: false,
+      });
+      getCurrentContext().freeVariableCount += 1n;
+
+      return {
+        witnessIndex: freeVariableCount,
+        sentenceIndex: BigInt(sentences.size),
+      };
+    },
+    exportSentence: (sentenceIndex: SentenceIndex): Successful | Failed => {
+      // It makes no sense to export sentences that are only present in a subgoal.
+      if (contexts.length !== 1) return "failed";
+
+      const { sentences } = getCurrentContext();
+      const sentence = retrieve(sentences, sentenceIndex);
+      if (sentence === "failed") return "failed";
+      if (!canExportSentence(sentence.sentence)) return "failed";
+      if (exportedSentences.isPresent(sentence.sentence)) return "failed";
+
+      // It is safe to cast sentenceIndex to number here because sentenceIndex is
+      // already validated in the `retrieve` call.
+      getCurrentContext().sentences = sentences.set(Number(sentenceIndex), {
+        ...sentence,
+        exported: true,
+      });
+
+      exportedSentences.add(sentence.sentence);
 
       return "successful";
     },
@@ -281,16 +415,12 @@ function startInteractiveSession() {
       return BigInt(sentences.size);
     },
     imply: (a: Sentence, b: Sentence): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount, exportedVariableCount } =
-        getCurrentContext();
-      if (!validateSentence(a, freeVariableCount, exportedVariableCount))
-        return "failed";
-      if (!validateSentence(b, freeVariableCount, exportedVariableCount))
-        return "failed";
+      const { sentences, freeVariableCount } = getCurrentContext();
+      if (!validateSentence(a)) return "failed";
+      if (!validateSentence(b)) return "failed";
 
       contexts.push({
         freeVariableCount,
-        exportedVariableCount,
         sentences: sentences.push({ sentence: a, exported: false }),
         goal: {
           inContext: b,
@@ -344,10 +474,8 @@ function startInteractiveSession() {
       a: SentenceIndex,
       b: Sentence
     ): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount, exportedVariableCount } =
-        getCurrentContext();
-      if (!validateSentence(b, freeVariableCount, exportedVariableCount))
-        return "failed";
+      const { sentences } = getCurrentContext();
+      if (!validateSentence(b)) return "failed";
 
       const x = retrieve(sentences, a);
       if (x === "failed") return "failed";
@@ -363,10 +491,8 @@ function startInteractiveSession() {
       a: Sentence,
       b: SentenceIndex
     ): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount, exportedVariableCount } =
-        getCurrentContext();
-      if (!validateSentence(a, freeVariableCount, exportedVariableCount))
-        return "failed";
+      const { sentences } = getCurrentContext();
+      if (!validateSentence(a)) return "failed";
 
       const y = retrieve(sentences, b);
       if (y === "failed") return "failed";
@@ -384,14 +510,10 @@ function startInteractiveSession() {
       b: Sentence,
       c: Sentence
     ): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount, exportedVariableCount } =
-        getCurrentContext();
-      if (!validateSentence(a, freeVariableCount, exportedVariableCount))
-        return "failed";
-      if (!validateSentence(b, freeVariableCount, exportedVariableCount))
-        return "failed";
-      if (!validateSentence(c, freeVariableCount, exportedVariableCount))
-        return "failed";
+      const { sentences } = getCurrentContext();
+      if (!validateSentence(a)) return "failed";
+      if (!validateSentence(b)) return "failed";
+      if (!validateSentence(c)) return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: {
@@ -457,8 +579,7 @@ function startInteractiveSession() {
       b: SentenceIndex,
       c: Sentence
     ): SentenceIndex | Failed => {
-      const { sentences, freeVariableCount, exportedVariableCount } =
-        getCurrentContext();
+      const { sentences } = getCurrentContext();
 
       const x = retrieve(sentences, a);
       const y = retrieve(sentences, b);
@@ -468,8 +589,7 @@ function startInteractiveSession() {
 
       if (!identical(x.sentence, y.sentence.content)) return "failed";
 
-      if (!validateSentence(c, freeVariableCount, exportedVariableCount))
-        return "failed";
+      if (!validateSentence(c)) return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: c,
