@@ -388,6 +388,30 @@ function startInteractiveSession() {
 
       return "successful";
     },
+    getExportedWitness: (
+      sentenceIndex: SentenceIndex
+    ): SentenceIndex | Failed => {
+      // It makes no sense to export witnesses that are only present in a subgoal.
+      if (contexts.length !== 1) return "failed";
+
+      const { sentences } = getCurrentContext();
+      const sentence = retrieve(sentences, sentenceIndex);
+      if (sentence === "failed") return "failed";
+      if (!sentence.exported) return "failed";
+      if (sentence.sentence.type !== "exists") return "failed";
+
+      const hypothesis = substituteIntoBinder(
+        sentence.sentence,
+        exported(sentenceIndex)
+      );
+
+      getCurrentContext().sentences = sentences.push({
+        exported: false,
+        sentence: hypothesis,
+      });
+
+      return BigInt(sentences.size);
+    },
     leftSideOfAnd: (sentenceIndex: SentenceIndex): SentenceIndex | Failed => {
       const { sentences } = getCurrentContext();
       const sentence = retrieve(sentences, sentenceIndex);
