@@ -12,7 +12,8 @@ export type Sentence =
   | { type: "or"; a: Sentence; b: Sentence }
   | { type: "imply"; a: Sentence; b: Sentence }
   | { type: "not"; content: Sentence }
-  | { type: "member"; a: Variable; b: Variable };
+  | { type: "member"; a: Variable; b: Variable }
+  | { type: "equal"; a: Variable; b: Variable };
 
 const serializeSentence = (a: Sentence) => {
   const dfs = (a: Sentence): string => {
@@ -75,6 +76,7 @@ export const exported: VariableFactory = (a) => ({
   type: "witness of exported existential",
   sentenceIndex: a,
 });
+export const equal: SentenceFactory3 = (a, b) => ({ type: "equal", a, b });
 
 export function startInteractiveSession() {
   const contexts: Context[] = [
@@ -153,7 +155,7 @@ export function startInteractiveSession() {
         return;
       }
 
-      if (a.type === "member") {
+      if (a.type === "member" || a.type === "equal") {
         const x = a.a;
         const y = a.b;
 
@@ -202,7 +204,7 @@ export function startInteractiveSession() {
       throw new Error("This shouldn't happen.");
 
     const dfs = (a: Sentence, depth: bigint = 0n): Sentence => {
-      if (a.type === "member") {
+      if (a.type === "member" || a.type === "equal") {
         const replace = (a: Variable): Variable => {
           if (a.type !== "bound") return a;
           if (a.index === depth) return b;
@@ -618,6 +620,76 @@ export function startInteractiveSession() {
       getCurrentContext().sentences = sentences.push({
         sentence: c,
         exported: false,
+      });
+
+      return BigInt(sentences.size);
+    },
+    // Given a hypothesis that states A = B, this rule replaces all occurrences of
+    // A with B in `sentence`.
+    rewrite: (
+      equalHypothesisIndex: SentenceIndex,
+      sentenceIndex: SentenceIndex
+    ): SentenceIndex | Failed => {
+      const { sentences } = getCurrentContext();
+
+      const equalHypothesis = retrieve(sentences, equalHypothesisIndex);
+      if (equalHypothesis === "failed") return "failed";
+      const sentence = retrieve(sentences, sentenceIndex);
+      if (sentence === "failed") return "failed";
+
+      if (equalHypothesis.sentence.type !== "equal") return "failed";
+
+      // These are sanity checks to catch bugs in other parts of the program.
+      // These are invariants that are kept throughout the course of the program.
+      if (
+        equalHypothesis.sentence.a.type !== "free" &&
+        equalHypothesis.sentence.a.type !== "witness of exported existential"
+      )
+        throw new Error("This shouldn't happen");
+      if (
+        equalHypothesis.sentence.b.type !== "free" &&
+        equalHypothesis.sentence.b.type !== "witness of exported existential"
+      )
+        throw new Error("This shouldn't happen");
+
+      const variable1 = equalHypothesis.sentence.a;
+      const variable2 = equalHypothesis.sentence.b;
+
+      const dfs = (sentence: Sentence): Sentence => {
+        if (
+          sentence.type === "and" ||
+          sentence.type === "or" ||
+          sentence.type === "imply"
+        )
+          return { ...sentence, a: dfs(sentence.a), b: dfs(sentence.b) };
+
+        if (
+          sentence.type === "not" ||
+          sentence.type === "forall" ||
+          sentence.type === "exists"
+        )
+          return { ...sentence, content: dfs(sentence.content) };
+
+        const replace = (a: Variable): Variable => {
+          if (a.type === "free" && variable1.type === "free")
+            if (a.index === variable1.index) return variable2;
+
+          if (
+            a.type === "witness of exported existential" &&
+            variable1.type === "witness of exported existential"
+          )
+            if (a.sentenceIndex === variable1.sentenceIndex) return variable2;
+          return a;
+        };
+
+        return { ...sentence, a: replace(sentence.a), b: replace(sentence.b) };
+      };
+
+      const newHypothesis = dfs(sentence.sentence);
+
+      getCurrentContext().sentences = sentences.push({
+        exported: false,
+        sentence: newHypothesis,
       });
 
       return BigInt(sentences.size);
