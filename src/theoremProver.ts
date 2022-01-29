@@ -20,7 +20,26 @@ export type Sentence =
       type: "use definition";
       arguments: Variable[];
       definitionIndex: DefinitionIndex;
+    }
+  | {
+      type: "use definition in sentence scheme";
+      arguments: Variable[];
+      definitionIndex: DefinitionIndex;
     };
+
+// See https://en.wikipedia.org/wiki/Axiom_schema
+// This is called "sentence scheme", not "axiom scheme" (or "axiom schema")
+// because a sentence scheme can be proven.
+export type SentenceScheme = {
+  type: "sentence scheme";
+  // A sentence scheme takes one or many definitions to produce a sentence.
+  // The number of definitions that the sentence scheme takes is the length of
+  // the parameterCounts array. The parameterCounts array represents the parameter
+  // counts of the definitions that this sentence scheme takes.
+  parameterCounts: bigint[];
+  // Now this sentence can refer to the definitions taken by this sentence scheme.
+  content: Sentence;
+};
 
 const serializeSentence = (a: Sentence) => {
   const dfs = (a: Sentence): string => {
@@ -44,10 +63,21 @@ const serializeSentence = (a: Sentence) => {
         .map(printVariable)
         .join(", ")}])`;
 
+    if (a.type === "use definition in sentence scheme")
+      return `(definitionInScheme ${a.definitionIndex} [${a.arguments
+        .map(printVariable)
+        .join(", ")}])`;
+
     return `(${a.type} ${printVariable(a.a)} ${printVariable(a.b)})`;
   };
 
   return dfs(a);
+};
+
+const serializeSentenceScheme = (a: SentenceScheme) => {
+  return `(scheme [${a.parameterCounts
+    .map((x) => x.toString())
+    .join(", ")}] ${serializeSentence(a.content)})`;
 };
 
 type Goal = {
@@ -56,7 +86,7 @@ type Goal = {
 };
 
 type ContextSentence = {
-  sentence: Sentence;
+  sentence: Sentence | SentenceScheme;
   exported: boolean;
 };
 
@@ -152,11 +182,13 @@ export function startInteractiveSession() {
     return { add, isPresent };
   })();
 
-  // This function assumes that the sentence is already valid.
+  // **This function assumes that the sentence or sentence scheme is already valid.**
   // This is true for all sentences in the contexts.
+  // IF YOU MODIFY THE IMPLEMENTATION OF THIS FUNCTION, PLEASE MAKE SURE NOT TO
+  // DUPLICATE THE WORK DONE IN THE `validateSentence` CALL.
   // A sentence can be exported if and only if it only refers to exported variables
   // and bound variables.
-  const canExportSentence = (sentence: Sentence): boolean => {
+  const canExportSentence = (sentence: Sentence | SentenceScheme): boolean => {
     const dfs = (a: Sentence): boolean => {
       if (a.type === "forall" || a.type === "exists" || a.type === "not")
         return dfs(a.content);
@@ -173,16 +205,27 @@ export function startInteractiveSession() {
         return a.arguments.every(isAcceptable);
       }
 
+      if (a.type === "use definition in sentence scheme")
+        return a.arguments.every(isAcceptable);
+
       return isAcceptable(a.a) && isAcceptable(a.b);
     };
 
+    if (sentence.type === "sentence scheme") return dfs(sentence.content);
     return dfs(sentence);
   };
 
   const identical = (a: Sentence, b: Sentence): boolean =>
     serializeSentence(a) === serializeSentence(b);
 
-  const validateSentence = (a: Sentence): boolean => {
+  // The parameterCounts parameter is the parameterCounts field in a SentenceScheme.
+  // validateSentenceOrScheme(sentence) will pass an empty array to this function if
+  // `sentence` is of type Sentence, and `sentence.parameterCounts` if `sentence` is
+  // of type SentenceScheme.
+  const validateSentence = (
+    a: Sentence,
+    parameterCounts: bigint[]
+  ): boolean => {
     const { freeVariableCount } = getCurrentContext();
 
     let isValid = true;
@@ -204,48 +247,72 @@ export function startInteractiveSession() {
         return;
       }
 
-      if (a.type === "member" || a.type === "equal") {
-        const x = a.a;
-        const y = a.b;
-
+      // This function only modifies the isValid variable in the outer scope
+      // and doesn't return anything.
+      const validateVariable = (x: Variable) => {
         if (x.type !== "witness of exported existential" && x.index < 0n)
           isValid = false;
-        if (y.type !== "witness of exported existential" && y.index < 0n)
-          isValid = false;
-        if (
-          x.type === "witness of exported existential" &&
-          x.sentenceIndex < 0n
-        )
-          isValid = false;
-        if (
-          y.type === "witness of exported existential" &&
-          y.sentenceIndex < 0n
-        )
-          isValid = false;
         if (x.type === "bound" && x.index >= binderCount) isValid = false;
-        if (y.type === "bound" && y.index >= binderCount) isValid = false;
         if (x.type === "free" && x.index >= freeVariableCount) isValid = false;
-        if (y.type === "free" && y.index >= freeVariableCount) isValid = false;
         if (x.type === "witness of exported existential") {
           const sentence = retrieve(x.sentenceIndex);
           if (sentence === "failed") isValid = false;
           else if (!sentence.exported) isValid = false;
           else if (sentence.sentence.type !== "exists") isValid = false;
         }
-        if (y.type === "witness of exported existential") {
-          const sentence = retrieve(y.sentenceIndex);
-          if (sentence === "failed") isValid = false;
-          else if (!sentence.exported) isValid = false;
-          else if (sentence.sentence.type !== "exists") isValid = false;
+      };
+
+      if (a.type === "member" || a.type === "equal") {
+        validateVariable(a.a);
+        validateVariable(a.b);
+
+        return;
+      }
+
+      if (a.type === "use definition") {
+        const definition = retrieveDefinition(a.definitionIndex);
+        if (definition === "failed") {
+          isValid = false;
+          return;
+        }
+
+        if (BigInt(a.arguments.length) !== definition.parameterCount) {
+          isValid = false;
+          return;
         }
 
         return;
+      }
+
+      if (a.type === "use definition in sentence scheme") {
+        if (a.definitionIndex < 0n) {
+          isValid = false;
+          return;
+        }
+
+        const definitionCount = BigInt(parameterCounts.length);
+        if (a.definitionIndex >= definitionCount) {
+          isValid = false;
+          return;
+        }
+
+        const parameterCount = parameterCounts[Number(a.definitionIndex)];
+        if (BigInt(a.arguments.length) !== parameterCount) {
+          isValid = false;
+          return;
+        }
       }
     };
 
     dfs(a, 0n);
 
     return isValid;
+  };
+
+  const validateSentenceOrScheme = (sentence: Sentence | SentenceScheme) => {
+    if (sentence.type === "sentence scheme")
+      return validateSentence(sentence.content, sentence.parameterCounts);
+    return validateSentence(sentence, []);
   };
 
   const substituteIntoBinder = (a: Sentence, b: Variable): Sentence => {
@@ -325,7 +392,7 @@ export function startInteractiveSession() {
     },
     excludedMiddle: (sentence: Sentence): bigint | Failed => {
       const { sentences } = getCurrentContext();
-      if (!validateSentence(sentence)) return "failed";
+      if (!validateSentenceOrScheme(sentence)) return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: {
@@ -340,7 +407,7 @@ export function startInteractiveSession() {
     },
     forall: (sentence: Sentence): Successful | Failed => {
       const { freeVariableCount } = getCurrentContext();
-      if (!validateSentence(sentence)) return "failed";
+      if (!validateSentenceOrScheme(sentence)) return "failed";
       if (sentence.type !== "forall") return "failed";
 
       contexts.push({
@@ -375,7 +442,7 @@ export function startInteractiveSession() {
       return BigInt(sentences.size);
     },
     exists: (sentence: Sentence, variable: Variable): Successful | Failed => {
-      if (!validateSentence(sentence)) return "failed";
+      if (!validateSentenceOrScheme(sentence)) return "failed";
       if (sentence.type !== "exists") return "failed";
 
       if (!isValidUnboundVariable(variable)) return "failed";
@@ -487,8 +554,8 @@ export function startInteractiveSession() {
     },
     imply: (a: Sentence, b: Sentence): SentenceIndex | Failed => {
       const { sentences, freeVariableCount } = getCurrentContext();
-      if (!validateSentence(a)) return "failed";
-      if (!validateSentence(b)) return "failed";
+      if (!validateSentenceOrScheme(a)) return "failed";
+      if (!validateSentenceOrScheme(b)) return "failed";
 
       contexts.push({
         ...getCurrentContext(),
@@ -547,7 +614,7 @@ export function startInteractiveSession() {
       b: Sentence
     ): SentenceIndex | Failed => {
       const { sentences } = getCurrentContext();
-      if (!validateSentence(b)) return "failed";
+      if (!validateSentenceOrScheme(b)) return "failed";
 
       const x = retrieve(a);
       if (x === "failed") return "failed";
@@ -564,7 +631,7 @@ export function startInteractiveSession() {
       b: SentenceIndex
     ): SentenceIndex | Failed => {
       const { sentences } = getCurrentContext();
-      if (!validateSentence(a)) return "failed";
+      if (!validateSentenceOrScheme(a)) return "failed";
 
       const y = retrieve(b);
       if (y === "failed") return "failed";
@@ -583,9 +650,9 @@ export function startInteractiveSession() {
       c: Sentence
     ): SentenceIndex | Failed => {
       const { sentences } = getCurrentContext();
-      if (!validateSentence(a)) return "failed";
-      if (!validateSentence(b)) return "failed";
-      if (!validateSentence(c)) return "failed";
+      if (!validateSentenceOrScheme(a)) return "failed";
+      if (!validateSentenceOrScheme(b)) return "failed";
+      if (!validateSentenceOrScheme(c)) return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: {
@@ -661,7 +728,7 @@ export function startInteractiveSession() {
 
       if (!identical(x.sentence, y.sentence.content)) return "failed";
 
-      if (!validateSentence(c)) return "failed";
+      if (!validateSentenceOrScheme(c)) return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: c,
