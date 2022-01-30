@@ -160,12 +160,12 @@ export function startInteractiveSession() {
   const isNonnegativeInteger = (index: bigint): boolean =>
     index <= Number.MAX_SAFE_INTEGER && index >= 0;
   const retrieveDefinition = (index: bigint): Failed | Definition => {
-    if (isNonnegativeInteger(index)) return "failed";
+    if (!isNonnegativeInteger(index)) return "failed";
     return getCurrentContext().definitions.get(Number(index), "failed");
   };
 
   const retrieve = (index: bigint): Failed | ContextSentence => {
-    if (isNonnegativeInteger(index)) return "failed";
+    if (!isNonnegativeInteger(index)) return "failed";
     return getCurrentContext().sentences.get(Number(index), "failed");
   };
 
