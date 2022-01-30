@@ -203,7 +203,11 @@ export function startInteractiveSession() {
         return dfs(a.a) && dfs(a.b);
 
       const isAcceptable = (x: Variable) =>
-        x.type === "bound" || x.type === "witness of exported existential";
+        x.type === "bound" ||
+        x.type === "witness of exported existential" ||
+        // Because canExportSentence is called by canExportDefinition, this variable type
+        // is also acceptable.
+        x.type === "definition parameter";
 
       if (a.type === "use definition") {
         const definition = retrieveDefinition(a.definitionIndex);
@@ -220,6 +224,15 @@ export function startInteractiveSession() {
 
     if (sentence.type === "sentence scheme") return dfs(sentence.content);
     return dfs(sentence);
+  };
+
+  const canExportDefinition = (definition: Definition): boolean => {
+    if (definition.sentence.type == "opaque") {
+      // Opaque definitions are only present in a subgoal. If this branch is hit,
+      // this indicates a bug in the program.
+      throw new Error("This shouldn't happen.");
+    }
+    return canExportSentence(definition.sentence);
   };
 
   const identical = (a: Sentence, b: Sentence): boolean =>
@@ -877,6 +890,27 @@ export function startInteractiveSession() {
       });
 
       return BigInt(definitions.size);
+    },
+    exportDefinition: (definitionIndex: bigint): Successful | Failed => {
+      const { definitions } = getCurrentContext();
+
+      // It makes no sense to export definitions that are only present in a subgoal.
+      if (definitions.size !== 1) return "failed";
+      const definition = retrieveDefinition(definitionIndex);
+      if (definition === "failed") return "failed";
+      if (!canExportDefinition(definition)) return "failed";
+      if (exportedDefinitions.isPresent(definition)) return "failed";
+
+      // It is safe to cast definitionIndex to number here because definitionIndex is
+      // already validated in the `retrieveDefinition` call.
+      getCurrentContext().definitions = definitions.set(
+        Number(definitionIndex),
+        { ...definition, exported: true }
+      );
+
+      exportedDefinitions.add(definition);
+
+      return "successful";
     },
     // This function is primarily for debugging.
     getState: () => {
