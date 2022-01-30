@@ -738,7 +738,8 @@ export function startInteractiveSession() {
       return BigInt(sentences.size);
     },
     // Given a hypothesis that states A = B, this rule replaces all occurrences of
-    // A with B in `sentence`.
+    // A with B in `sentence`. If `reverseDirection = true` is supplied, this
+    // function replaces B with A instead.
     rewrite: (
       equalHypothesisIndex: SentenceIndex,
       sentenceIndex: SentenceIndex,
