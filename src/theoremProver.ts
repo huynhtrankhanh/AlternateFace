@@ -883,6 +883,11 @@ export function startInteractiveSession() {
       console.log(
         contexts.map((x) => ({
           ...x,
+          definitions: x.definitions
+            .map(
+              (a) => (a.exported ? "[EXPORTED] " : "") + serializeDefinition(a)
+            )
+            .toJS(),
           sentences: x.sentences
             .map(
               (a) =>
