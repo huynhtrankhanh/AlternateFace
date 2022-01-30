@@ -1011,6 +1011,58 @@ export function startInteractiveSession() {
 
       return checkForExhaustiveness(foldOrUnfold);
     },
+    applySentenceScheme: (
+      sentenceIndex: SentenceIndex,
+      definitions: DefinitionIndex[]
+    ): SentenceIndex | Failed => {
+      const sentence = retrieve(sentenceIndex);
+      if (sentence === "failed") return "failed";
+      if (sentence.sentence.type !== "sentence scheme") return "failed";
+
+      if (definitions.length !== sentence.sentence.parameterCounts.length)
+        return "failed";
+
+      for (const [index, definitionIndex] of definitions.entries()) {
+        const definition = retrieveDefinition(definitionIndex);
+        if (definition === "failed") return "failed";
+        if (
+          definition.parameterCount !== sentence.sentence.parameterCounts[index]
+        )
+          return "failed";
+      }
+
+      const dfs = (a: Sentence): Sentence => {
+        if (a.type === "and" || a.type === "or" || a.type === "imply")
+          return { ...a, a: dfs(a.a), b: dfs(a.b) };
+        if (a.type === "forall" || a.type === "exists" || a.type === "not")
+          return { ...a, content: dfs(a.content) };
+        if (
+          a.type === "member" ||
+          a.type === "equal" ||
+          a.type === "use definition"
+        )
+          return a;
+        if (a.type == "use definition in sentence scheme") {
+          return {
+            type: "use definition",
+            arguments: a.arguments,
+            // Already bounds checked by validateSentenceOrScheme.
+            definitionIndex: definitions[Number(a.definitionIndex)],
+          };
+        }
+        return checkForExhaustiveness(a);
+      };
+
+      const { sentences } = getCurrentContext();
+
+      const toInsert = dfs(sentence.sentence.content);
+      getCurrentContext().sentences = sentences.push({
+        sentence: toInsert,
+        exported: false,
+      });
+
+      return BigInt(sentences.size);
+    },
     // This function is primarily for debugging.
     getState: () => {
       console.log(
