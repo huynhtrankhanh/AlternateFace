@@ -226,12 +226,19 @@ export function startInteractiveSession() {
     serializeSentence(a) === serializeSentence(b);
 
   // The parameterCounts parameter is the parameterCounts field in a SentenceScheme.
-  // validateSentenceOrScheme(sentence) will pass an empty array to this function if
-  // `sentence` is of type Sentence, and `sentence.parameterCounts` if `sentence` is
-  // of type SentenceScheme.
+  // Callers of this function:
+  // 1. validateSentenceOrScheme(sentence) passes an empty array to the
+  //    parameterCounts parameter if `sentence` is of type Sentence, and
+  //    `sentence.parameterCounts` if `sentence` is of type SentenceScheme. This
+  //    caller always passes 0 to the definitionParameterCount parameter.
+  // 2. define() always passes an empty array to the parameterCounts parameter.
+  //    It passes an appropriate definitionParameterCount value depending on
+  //    how many parameters the definition takes.
+
   const validateSentence = (
     a: Sentence,
-    parameterCounts: bigint[]
+    parameterCounts: bigint[],
+    definitionParameterCount: bigint
   ): boolean => {
     const { freeVariableCount } = getCurrentContext();
 
@@ -257,15 +264,34 @@ export function startInteractiveSession() {
       // This function only modifies the isValid variable in the outer scope
       // and doesn't return anything.
       const validateVariable = (x: Variable) => {
-        if (x.type !== "witness of exported existential" && x.index < 0n)
-          isValid = false;
-        if (x.type === "bound" && x.index >= binderCount) isValid = false;
-        if (x.type === "free" && x.index >= freeVariableCount) isValid = false;
+        if (x.type === "bound") {
+          if (x.index >= binderCount || x.index < 0n) isValid = false;
+          return;
+        }
+        if (x.type === "free") {
+          if (x.index >= freeVariableCount || x.index < 0n) isValid = false;
+          return;
+        }
         if (x.type === "witness of exported existential") {
           const sentence = retrieve(x.sentenceIndex);
-          if (sentence === "failed") isValid = false;
-          else if (!sentence.exported) isValid = false;
-          else if (sentence.sentence.type !== "exists") isValid = false;
+          if (sentence === "failed") {
+            isValid = false;
+            return;
+          }
+          if (!sentence.exported) {
+            isValid = false;
+            return;
+          }
+          if (sentence.sentence.type !== "exists") {
+            isValid = false;
+            return;
+          }
+          return;
+        }
+        if (x.type === "definition parameter") {
+          if (x.index >= definitionParameterCount || x.index < 0n)
+            isValid = false;
+          return;
         }
       };
 
@@ -318,8 +344,8 @@ export function startInteractiveSession() {
 
   const validateSentenceOrScheme = (sentence: Sentence | SentenceScheme) => {
     if (sentence.type === "sentence scheme")
-      return validateSentence(sentence.content, sentence.parameterCounts);
-    return validateSentence(sentence, []);
+      return validateSentence(sentence.content, sentence.parameterCounts, 0n);
+    return validateSentence(sentence, [], 0n);
   };
 
   const substituteIntoBinder = (a: Sentence, b: Variable): Sentence => {
@@ -836,8 +862,21 @@ export function startInteractiveSession() {
 
       return BigInt(sentences.size);
     },
-    define: (parameterCount: bigint, sentence: Sentence) => {
-      ///
+    define: (
+      parameterCount: bigint,
+      sentence: Sentence
+    ): DefinitionIndex | Failed => {
+      if (!validateSentence(sentence, [], parameterCount)) return "failed";
+
+      const { definitions } = getCurrentContext();
+
+      getCurrentContext().definitions = definitions.push({
+        parameterCount,
+        sentence,
+        exported: false,
+      });
+
+      return BigInt(definitions.size);
     },
     // This function is primarily for debugging.
     getState: () => {
