@@ -80,9 +80,14 @@ const serializeSentenceScheme = (a: SentenceScheme) => {
     .join(", ")}] ${serializeSentence(a.content)})`;
 };
 
+const serializeSentenceOrScheme = (a: Sentence | SentenceScheme) => {
+  if (a.type === "sentence scheme") return serializeSentenceScheme(a);
+  return serializeSentence(a);
+};
+
 type Goal = {
   inContext: Sentence;
-  onExit: Sentence;
+  onExit: Sentence | SentenceScheme;
 };
 
 type ContextSentence = {
@@ -92,11 +97,13 @@ type ContextSentence = {
 
 type Definition = {
   parameterCount: bigint;
-  sentence: Sentence;
+  sentence: Sentence | { type: "opaque" };
   exported: boolean;
 };
 
 const serializeDefinition = (definition: Definition): string => {
+  if (definition.sentence.type === "opaque")
+    return `(parameters ${definition.parameterCount} (definition is opaque))`;
   return `(parameters ${definition.parameterCount}) ${serializeSentence(
     definition.sentence
   )}`;
@@ -159,12 +166,12 @@ export function startInteractiveSession() {
   const exportedSentences = (() => {
     const exportedSentences = new Set<string>();
 
-    const add = (sentence: Sentence) => {
-      exportedSentences.add(serializeSentence(sentence));
+    const add = (sentence: Sentence | SentenceScheme) => {
+      exportedSentences.add(serializeSentenceOrScheme(sentence));
     };
 
-    const isPresent = (sentence: Sentence): boolean =>
-      exportedSentences.has(serializeSentence(sentence));
+    const isPresent = (sentence: Sentence | SentenceScheme): boolean =>
+      exportedSentences.has(serializeSentenceOrScheme(sentence));
 
     return { add, isPresent };
   })();
@@ -377,6 +384,7 @@ export function startInteractiveSession() {
       const candidate = retrieve(sentenceIndex);
 
       if (candidate === "failed") return "failed";
+      if (candidate.sentence.type === "sentence scheme") return "failed";
 
       if (identical(goal.inContext, candidate.sentence)) {
         contexts.pop();
@@ -580,6 +588,7 @@ export function startInteractiveSession() {
       if (x === "failed" || y === "failed") return "failed";
 
       if (y.sentence.type !== "imply") return "failed";
+      if (x.sentence.type === "sentence scheme") return "failed";
       if (!identical(y.sentence.a, x.sentence)) return "failed";
 
       getCurrentContext().sentences = sentences.push({
@@ -597,6 +606,11 @@ export function startInteractiveSession() {
       const x = retrieve(a);
       const y = retrieve(b);
       if (x === "failed" || y === "failed") return "failed";
+      if (
+        x.sentence.type === "sentence scheme" ||
+        y.sentence.type === "sentence scheme"
+      )
+        return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: {
@@ -618,6 +632,7 @@ export function startInteractiveSession() {
 
       const x = retrieve(a);
       if (x === "failed") return "failed";
+      if (x.sentence.type === "sentence scheme") return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: { type: "or", a: x.sentence, b },
@@ -635,6 +650,7 @@ export function startInteractiveSession() {
 
       const y = retrieve(b);
       if (y === "failed") return "failed";
+      if (y.sentence.type === "sentence scheme") return "failed";
 
       getCurrentContext().sentences = sentences.push({
         sentence: { type: "or", a, b: y.sentence },
@@ -725,6 +741,7 @@ export function startInteractiveSession() {
 
       if (x === "failed" || y === "failed") return "failed";
       if (y.sentence.type !== "not") return "failed";
+      if (x.sentence.type === "sentence scheme") return "failed";
 
       if (!identical(x.sentence, y.sentence.content)) return "failed";
 
@@ -752,6 +769,7 @@ export function startInteractiveSession() {
       if (sentence === "failed") return "failed";
 
       if (equalHypothesis.sentence.type !== "equal") return "failed";
+      if (sentence.sentence.type === "sentence scheme") return "failed";
 
       // These are sanity checks to catch bugs in other parts of the program.
       // These are invariants that are kept throughout the course of the program.
@@ -799,7 +817,10 @@ export function startInteractiveSession() {
           return a;
         };
 
-        if (sentence.type === "use definition")
+        if (
+          sentence.type === "use definition" ||
+          sentence.type === "use definition in sentence scheme"
+        )
           return { ...sentence, arguments: sentence.arguments.map(replace) };
 
         return { ...sentence, a: replace(sentence.a), b: replace(sentence.b) };
@@ -814,16 +835,19 @@ export function startInteractiveSession() {
 
       return BigInt(sentences.size);
     },
+    define: (parameterCount: bigint, sentence: Sentence) => {
+      ///
+    },
     // This function is primarily for debugging.
     getState: () => {
       console.log(
         contexts.map((x) => ({
-          freeVariableCount: x.freeVariableCount,
+          ...x,
           sentences: x.sentences
             .map(
               (a) =>
                 (a.exported ? "[EXPORTED] " : "") +
-                serializeSentence(a.sentence)
+                serializeSentenceOrScheme(a.sentence)
             )
             .toJS(),
           goal:
@@ -831,7 +855,7 @@ export function startInteractiveSession() {
               ? undefined
               : {
                   inContext: serializeSentence(x.goal.inContext),
-                  onExit: serializeSentence(x.goal.onExit),
+                  onExit: serializeSentenceOrScheme(x.goal.onExit),
                 },
         }))
       );
