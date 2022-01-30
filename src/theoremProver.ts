@@ -1063,6 +1063,59 @@ export function startInteractiveSession() {
 
       return BigInt(sentences.size);
     },
+    proveSentenceScheme: (scheme: SentenceScheme): Successful | Failed => {
+      if (!validateSentenceOrScheme(scheme)) return "failed";
+
+      const { definitions } = getCurrentContext();
+
+      const newDefinitions = (() => {
+        let result = definitions;
+
+        for (const parameterCount of scheme.parameterCounts)
+          result = result.push({
+            parameterCount,
+            exported: false,
+            sentence: { type: "opaque" },
+          });
+
+        return result;
+      })();
+
+      const dfs = (a: Sentence): Sentence => {
+        if (a.type === "and" || a.type === "or" || a.type === "imply")
+          return { ...a, a: dfs(a.a), b: dfs(a.b) };
+        if (a.type === "forall" || a.type === "exists" || a.type === "not")
+          return { ...a, content: dfs(a.content) };
+        if (
+          a.type === "member" ||
+          a.type === "equal" ||
+          a.type === "use definition"
+        )
+          return a;
+        if (a.type == "use definition in sentence scheme") {
+          return {
+            type: "use definition",
+            arguments: a.arguments,
+            // Calculate the index of the definition in the new context. Because all
+            // definitions in the sentence scheme are pushed to the new context, a
+            // simple addition is sufficient.
+            definitionIndex: BigInt(definitions.size) + a.definitionIndex,
+          };
+        }
+        return checkForExhaustiveness(a);
+      };
+
+      contexts.push({
+        ...getCurrentContext(),
+        definitions: newDefinitions,
+        goal: {
+          inContext: dfs(scheme.content),
+          onExit: scheme,
+        },
+      });
+
+      return "successful";
+    },
     // This function is primarily for debugging.
     getState: () => {
       console.log(
