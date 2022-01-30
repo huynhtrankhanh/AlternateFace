@@ -141,7 +141,7 @@ export const exported: VariableFactory = (a) => ({
 });
 export const equal: SentenceFactory3 = (a, b) => ({ type: "equal", a, b });
 
-const checkForExhaustiveness = (x: never): never => {
+const checkForExhaustiveness = (_: never): never => {
   throw new Error("This shouldn't happen");
 };
 
