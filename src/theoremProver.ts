@@ -141,6 +141,10 @@ export const exported: VariableFactory = (a) => ({
 });
 export const equal: SentenceFactory3 = (a, b) => ({ type: "equal", a, b });
 
+const checkForExhaustiveness = (x: never): never => {
+  throw new Error("This shouldn't happen");
+};
+
 export function startInteractiveSession() {
   const contexts: Context[] = [
     {
@@ -153,13 +157,15 @@ export function startInteractiveSession() {
 
   const getCurrentContext = () => contexts[contexts.length - 1];
 
+  const isNonnegativeInteger = (index: bigint): boolean =>
+    index <= Number.MAX_SAFE_INTEGER && index >= 0;
   const retrieveDefinition = (index: bigint): Failed | Definition => {
-    if (index > Number.MAX_SAFE_INTEGER || index < 0) return "failed";
+    if (isNonnegativeInteger(index)) return "failed";
     return getCurrentContext().definitions.get(Number(index), "failed");
   };
 
   const retrieve = (index: bigint): Failed | ContextSentence => {
-    if (index > Number.MAX_SAFE_INTEGER || index < 0) return "failed";
+    if (isNonnegativeInteger(index)) return "failed";
     return getCurrentContext().sentences.get(Number(index), "failed");
   };
 
@@ -306,6 +312,8 @@ export function startInteractiveSession() {
             isValid = false;
           return;
         }
+
+        checkForExhaustiveness(x.type);
       };
 
       if (a.type === "member" || a.type === "equal") {
@@ -347,7 +355,11 @@ export function startInteractiveSession() {
           isValid = false;
           return;
         }
+
+        return;
       }
+
+      checkForExhaustiveness(a);
     };
 
     dfs(a, 0n);
@@ -366,13 +378,13 @@ export function startInteractiveSession() {
       throw new Error("This shouldn't happen.");
 
     const dfs = (a: Sentence, depth: bigint = 0n): Sentence => {
-      if (a.type === "member" || a.type === "equal") {
-        const replace = (a: Variable): Variable => {
-          if (a.type !== "bound") return a;
-          if (a.index === depth) return b;
-          return { index: a.index, type: "bound" };
-        };
+      const replace = (a: Variable): Variable => {
+        if (a.type !== "bound") return a;
+        if (a.index === depth) return b;
+        return { index: a.index, type: "bound" };
+      };
 
+      if (a.type === "member" || a.type === "equal") {
         return { type: "member", a: replace(a.a), b: replace(a.b) };
       }
 
@@ -385,7 +397,13 @@ export function startInteractiveSession() {
       if (a.type === "and" || a.type === "or" || a.type === "imply")
         return { type: a.type, a: dfs(a.a, depth), b: dfs(a.b, depth) };
 
-      return a;
+      if (
+        a.type === "use definition" ||
+        a.type === "use definition in sentence scheme"
+      )
+        return { ...a, arguments: a.arguments.map(replace) };
+
+      return checkForExhaustiveness(a);
     };
 
     return dfs(a.content);
@@ -911,6 +929,87 @@ export function startInteractiveSession() {
       exportedDefinitions.add(definition);
 
       return "successful";
+    },
+    // Produces a sentence that can be used to fold or unfold a definition.
+    foldOrUnfoldDefinition: (
+      definitionIndex: bigint,
+      foldOrUnfold: "fold" | "unfold"
+    ): SentenceIndex | Failed => {
+      const definition = retrieveDefinition(definitionIndex);
+      if (definition === "failed") return "failed";
+      if (definition.sentence.type === "opaque") return "failed";
+
+      const { sentence, parameterCount } = definition;
+      const { sentences } = getCurrentContext();
+
+      const change = (x: Variable) => {
+        if (x.type !== "definition parameter") return x;
+        return bound(parameterCount - 1n - x.index);
+      };
+
+      const dfs = (a: Sentence): Sentence => {
+        if (a.type === "and" || a.type === "or" || a.type === "imply")
+          return { ...a, a: dfs(a.a), b: a.b };
+        if (a.type === "forall" || a.type === "exists" || a.type === "not")
+          return { ...a, content: dfs(a.content) };
+        if (a.type === "member" || a.type === "equal")
+          return { ...a, a: change(a.a), b: change(a.b) };
+        if (
+          a.type === "use definition" ||
+          a.type === "use definition in sentence scheme"
+        )
+          return { ...a, arguments: a.arguments.map(change) };
+        return checkForExhaustiveness(a);
+      };
+
+      const wrap = (a: Sentence): Sentence => {
+        let result = a;
+        for (let i = 0n; i < parameterCount; i++) result = forall(result);
+        return result;
+      };
+
+      if (!isNonnegativeInteger(parameterCount)) return "failed";
+
+      if (foldOrUnfold === "fold") {
+        const toInsert = wrap(
+          imply(
+            {
+              type: "use definition",
+              definitionIndex,
+              arguments: Array(parameterCount)
+                .fill(0n)
+                .map((_, index) => bound(BigInt(index))),
+            },
+            dfs(sentence)
+          )
+        );
+
+        getCurrentContext().sentences = sentences.push({
+          sentence: toInsert,
+          exported: false,
+        });
+        return BigInt(sentences.size);
+      }
+
+      if (foldOrUnfold === "unfold") {
+        const toInsert = wrap(
+          imply(dfs(sentence), {
+            type: "use definition",
+            definitionIndex,
+            arguments: Array(parameterCount)
+              .fill(0n)
+              .map((_, index) => bound(BigInt(index))),
+          })
+        );
+
+        getCurrentContext().sentences = sentences.push({
+          sentence: toInsert,
+          exported: false,
+        });
+        return BigInt(sentences.size);
+      }
+
+      return checkForExhaustiveness(foldOrUnfold);
     },
     // This function is primarily for debugging.
     getState: () => {
