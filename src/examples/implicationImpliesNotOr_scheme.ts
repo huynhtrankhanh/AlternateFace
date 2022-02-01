@@ -15,41 +15,39 @@ session.proveSentenceScheme({
       {
         type: "use definition in sentence scheme",
         definitionIndex: 0n,
-        arguments: [],
+        parameters: [],
       },
       {
         type: "use definition in sentence scheme",
         definitionIndex: 1n,
-        arguments: [],
+        parameters: [],
       }
     ),
     or(
       not({
         type: "use definition in sentence scheme",
         definitionIndex: 0n,
-        arguments: [],
+        parameters: [],
       }),
       {
         type: "use definition in sentence scheme",
         definitionIndex: 1n,
-        arguments: [],
+        parameters: [],
       }
     )
   ),
 });
 
-session.getState();
-
 const P: Sentence = {
   type: "use definition",
   definitionIndex: 0n,
-  arguments: [],
+  parameters: [],
 };
 
 const Q: Sentence = {
   type: "use definition",
   definitionIndex: 1n,
-  arguments: [],
+  parameters: [],
 };
 
 const handle = session.imply(imply(P, Q), or(not(P), Q));
@@ -85,6 +83,5 @@ if (close === "failed") throw new Error("failed");
 if (split === "failed") throw new Error("failed");
 const goal = session.modusPonens(split, close);
 if (goal === "failed") throw new Error("failed");
-session.resolveGoal(goal);
-session.resolveGoal(handle);
-session.getState();
+if (session.resolveGoal(goal) === "failed") throw new Error("failed");
+if (session.resolveGoal(handle) === "failed") throw new Error("failed");

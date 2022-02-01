@@ -18,12 +18,12 @@ export type Sentence =
   | { type: "equal"; a: Variable; b: Variable }
   | {
       type: "use definition";
-      arguments: Variable[];
+      parameters: Variable[];
       definitionIndex: DefinitionIndex;
     }
   | {
       type: "use definition in sentence scheme";
-      arguments: Variable[];
+      parameters: Variable[];
       definitionIndex: DefinitionIndex;
     };
 
@@ -59,12 +59,12 @@ const serializeSentence = (a: Sentence) => {
     };
 
     if (a.type === "use definition")
-      return `(definition ${a.definitionIndex} [${a.arguments
+      return `(definition ${a.definitionIndex} [${a.parameters
         .map(printVariable)
         .join(", ")}])`;
 
     if (a.type === "use definition in sentence scheme")
-      return `(definitionInScheme ${a.definitionIndex} [${a.arguments
+      return `(definitionInScheme ${a.definitionIndex} [${a.parameters
         .map(printVariable)
         .join(", ")}])`;
 
@@ -140,6 +140,14 @@ export const exported: VariableFactory = (a) => ({
   sentenceIndex: a,
 });
 export const equal: SentenceFactory3 = (a, b) => ({ type: "equal", a, b });
+export const parameter: VariableFactory = (x) => ({
+  type: "definition parameter",
+  index: x,
+});
+export const definition = (
+  definitionIndex: bigint,
+  parameters: Variable[]
+): Sentence => ({ type: "use definition", parameters, definitionIndex });
 
 const checkForExhaustiveness = (_: never): never => {
   throw new Error("This shouldn't happen");
@@ -219,11 +227,11 @@ export function startInteractiveSession() {
         const definition = retrieveDefinition(a.definitionIndex);
         if (definition === "failed") return false;
         if (!definition.exported) return false;
-        return a.arguments.every(isAcceptable);
+        return a.parameters.every(isAcceptable);
       }
 
       if (a.type === "use definition in sentence scheme")
-        return a.arguments.every(isAcceptable);
+        return a.parameters.every(isAcceptable);
 
       return isAcceptable(a.a) && isAcceptable(a.b);
     };
@@ -330,7 +338,7 @@ export function startInteractiveSession() {
           return;
         }
 
-        if (BigInt(a.arguments.length) !== definition.parameterCount) {
+        if (BigInt(a.parameters.length) !== definition.parameterCount) {
           isValid = false;
           return;
         }
@@ -351,7 +359,7 @@ export function startInteractiveSession() {
         }
 
         const parameterCount = parameterCounts[Number(a.definitionIndex)];
-        if (BigInt(a.arguments.length) !== parameterCount) {
+        if (BigInt(a.parameters.length) !== parameterCount) {
           isValid = false;
           return;
         }
@@ -401,7 +409,7 @@ export function startInteractiveSession() {
         a.type === "use definition" ||
         a.type === "use definition in sentence scheme"
       )
-        return { ...a, arguments: a.arguments.map(replace) };
+        return { ...a, parameters: a.parameters.map(replace) };
 
       return checkForExhaustiveness(a);
     };
@@ -879,7 +887,7 @@ export function startInteractiveSession() {
           sentence.type === "use definition" ||
           sentence.type === "use definition in sentence scheme"
         )
-          return { ...sentence, arguments: sentence.arguments.map(replace) };
+          return { ...sentence, parameters: sentence.parameters.map(replace) };
 
         return { ...sentence, a: replace(sentence.a), b: replace(sentence.b) };
       };
@@ -913,7 +921,7 @@ export function startInteractiveSession() {
       const { definitions } = getCurrentContext();
 
       // It makes no sense to export definitions that are only present in a subgoal.
-      if (definitions.size !== 1) return "failed";
+      if (contexts.length !== 1) return "failed";
       const definition = retrieveDefinition(definitionIndex);
       if (definition === "failed") return "failed";
       if (!canExportDefinition(definition)) return "failed";
@@ -958,7 +966,7 @@ export function startInteractiveSession() {
           a.type === "use definition" ||
           a.type === "use definition in sentence scheme"
         )
-          return { ...a, arguments: a.arguments.map(change) };
+          return { ...a, parameters: a.parameters.map(change) };
         return checkForExhaustiveness(a);
       };
 
@@ -976,7 +984,7 @@ export function startInteractiveSession() {
             {
               type: "use definition",
               definitionIndex,
-              arguments: Array(parameterCount)
+              parameters: Array(parameterCount)
                 .fill(0n)
                 .map((_, index) => bound(BigInt(index))),
             },
@@ -996,7 +1004,7 @@ export function startInteractiveSession() {
           imply(dfs(sentence), {
             type: "use definition",
             definitionIndex,
-            arguments: Array(parameterCount)
+            parameters: Array(parameterCount)
               .fill(0n)
               .map((_, index) => bound(BigInt(index))),
           })
@@ -1045,7 +1053,7 @@ export function startInteractiveSession() {
         if (a.type == "use definition in sentence scheme") {
           return {
             type: "use definition",
-            arguments: a.arguments,
+            parameters: a.parameters,
             // Already bounds checked by validateSentenceOrScheme.
             definitionIndex: definitions[Number(a.definitionIndex)],
           };
@@ -1095,7 +1103,7 @@ export function startInteractiveSession() {
         if (a.type == "use definition in sentence scheme") {
           return {
             type: "use definition",
-            arguments: a.arguments,
+            parameters: a.parameters,
             // Calculate the index of the definition in the new context. Because all
             // definitions in the sentence scheme are pushed to the new context, a
             // simple addition is sufficient.

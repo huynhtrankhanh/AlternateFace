@@ -10,36 +10,45 @@ import {
 } from "../theoremProver";
 
 const session = startInteractiveSession();
-session.forall(
-  forall(
+if (
+  session.forall(
     forall(
       forall(
-        imply(
-          imply(member(bound(1n), bound(0n)), member(bound(2n), bound(0n))),
-          or(not(member(bound(1n), bound(0n))), member(bound(2n), bound(0n)))
+        forall(
+          imply(
+            imply(member(bound(1n), bound(0n)), member(bound(2n), bound(0n))),
+            or(not(member(bound(1n), bound(0n))), member(bound(2n), bound(0n)))
+          )
         )
       )
     )
-  )
-);
-session.forall(
-  forall(
+  ) === "failed"
+)
+  throw new Error("failed");
+if (
+  session.forall(
     forall(
-      imply(
-        imply(member(bound(1n), bound(0n)), member(free(0n), bound(0n))),
-        or(not(member(bound(1n), bound(0n))), member(free(0n), bound(0n)))
+      forall(
+        imply(
+          imply(member(bound(1n), bound(0n)), member(free(0n), bound(0n))),
+          or(not(member(bound(1n), bound(0n))), member(free(0n), bound(0n)))
+        )
       )
     )
-  )
-);
-session.forall(
-  forall(
-    imply(
-      imply(member(free(1n), bound(0n)), member(free(0n), bound(0n))),
-      or(not(member(free(1n), bound(0n))), member(free(0n), bound(0n)))
+  ) === "failed"
+)
+  throw new Error("failed");
+if (
+  session.forall(
+    forall(
+      imply(
+        imply(member(free(1n), bound(0n)), member(free(0n), bound(0n))),
+        or(not(member(free(1n), bound(0n))), member(free(0n), bound(0n)))
+      )
     )
-  )
-);
+  ) === "failed"
+)
+  throw new Error("failed");
 
 const P = member(free(1n), free(2n));
 const Q = member(free(0n), free(2n));
@@ -82,5 +91,3 @@ const o = session.resolveGoal(n);
 if (o === "failed") throw new Error("failed");
 const p = session.resolveGoal(o);
 if (p === "failed") throw new Error("failed");
-
-session.getState();
