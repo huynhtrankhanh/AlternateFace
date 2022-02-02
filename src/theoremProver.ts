@@ -1151,5 +1151,6 @@ export function startInteractiveSession() {
         }))
       );
     },
+    contexts,
   };
 }
