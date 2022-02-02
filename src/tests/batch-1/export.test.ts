@@ -10,7 +10,7 @@ import {
   free,
   imply,
   or,
-} from "../theoremProver";
+} from "../../theoremProver";
 
 test("can't export sentence in subgoal", () => {
   const session = startInteractiveSession();

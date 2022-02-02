@@ -10,7 +10,7 @@ import {
   definition,
   not,
   or,
-} from "../theoremProver";
+} from "../../theoremProver";
 
 test("rejects invalid sentences", () => {
   const session = startInteractiveSession();

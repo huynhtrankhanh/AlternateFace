@@ -85,17 +85,17 @@ const serializeSentenceOrScheme = (a: Sentence | SentenceScheme) => {
   return serializeSentence(a);
 };
 
-type Goal = {
+export type Goal = {
   inContext: Sentence;
   onExit: Sentence | SentenceScheme;
 };
 
-type ContextSentence = {
+export type ContextSentence = {
   sentence: Sentence | SentenceScheme;
   exported: boolean;
 };
 
-type Definition = {
+export type Definition = {
   parameterCount: bigint;
   sentence: Sentence | { type: "opaque" };
   exported: boolean;
@@ -109,7 +109,7 @@ const serializeDefinition = (definition: Definition): string => {
   )}`;
 };
 
-type Context = {
+export type Context = {
   sentences: List<ContextSentence>;
   definitions: List<Definition>;
   goal: Goal | undefined;
@@ -343,6 +343,8 @@ export function startInteractiveSession() {
           return;
         }
 
+        a.parameters.forEach(validateVariable);
+
         return;
       }
 
@@ -363,6 +365,8 @@ export function startInteractiveSession() {
           isValid = false;
           return;
         }
+
+        a.parameters.forEach(validateVariable);
 
         return;
       }
@@ -1152,5 +1156,6 @@ export function startInteractiveSession() {
       );
     },
     contexts,
+    validateSentence,
   };
 }
