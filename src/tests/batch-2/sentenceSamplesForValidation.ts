@@ -60,8 +60,6 @@ const E = (sentences: ContextSentence[]): Context => ({
 // Last field: true if valid, false otherwise.
 export type TestCase = [Context, Sentence | SentenceScheme, boolean];
 
-// To help you locate the test case, all of them are numbered.
-
 const tests: TestCase[] = [
   [D, forall(member(bound(0n), bound(0n))), true],
   [D, forall(member(bound(0n), bound(-5n))), false],

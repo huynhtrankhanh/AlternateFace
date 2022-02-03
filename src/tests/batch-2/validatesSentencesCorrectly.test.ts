@@ -12,7 +12,11 @@ const runTest = (test: TestCase, index: number): void => {
 
   if (session.validateSentence(test[1], [], 0n) !== test[2]) {
     session.getState();
-    throw new Error("This shouldn't happen. Test " + index);
+    throw new Error(
+      "This shouldn't happen. Test " +
+        index +
+        ". Note: first test case is test 0."
+    );
   }
 };
 
@@ -23,7 +27,11 @@ const runTest2 = (test: TestCase, index: number): void => {
 
   if (session.validateSentenceOrScheme(test[1]) !== test[2]) {
     session.getState();
-    throw new Error("This shouldn't happen. Test " + index);
+    throw new Error(
+      "This shouldn't happen. Test " +
+        index +
+        ". Note: first test case is test 0."
+    );
   }
 };
 
