@@ -148,6 +148,14 @@ export const definition = (
   definitionIndex: bigint,
   parameters: Variable[]
 ): Sentence => ({ type: "use definition", parameters, definitionIndex });
+export const definitionInScheme = (
+  definitionIndex: bigint,
+  parameters: Variable[]
+): Sentence => ({
+  type: "use definition in sentence scheme",
+  parameters,
+  definitionIndex,
+});
 
 const checkForExhaustiveness = (_: never): never => {
   throw new Error("This shouldn't happen");
@@ -268,6 +276,8 @@ export function startInteractiveSession() {
     definitionParameterCount: bigint
   ): boolean => {
     const { freeVariableCount } = getCurrentContext();
+    if (definitionParameterCount < 0n) return false;
+    if (parameterCounts.some((x) => x < 0n)) return false;
 
     let isValid = true;
 
@@ -361,6 +371,7 @@ export function startInteractiveSession() {
         }
 
         const parameterCount = parameterCounts[Number(a.definitionIndex)];
+
         if (BigInt(a.parameters.length) !== parameterCount) {
           isValid = false;
           return;
@@ -1157,5 +1168,6 @@ export function startInteractiveSession() {
     },
     contexts,
     validateSentence,
+    validateSentenceOrScheme,
   };
 }

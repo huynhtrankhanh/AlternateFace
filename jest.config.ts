@@ -143,7 +143,7 @@ export default {
   // The glob patterns Jest uses to detect test files
   testMatch: ["**/__tests__/**/*.[jt]s?(x)", "**/?(*.)+(spec|test).[tj]s?(x)"],
   transform: {
-    "^.+\\.(ts|tsx)$": "ts-jest",
+    "^.+\\.(ts|tsx)$": "@swc/jest",
   },
 
   // An array of regexp pattern strings that are matched against all test paths, matched tests are skipped

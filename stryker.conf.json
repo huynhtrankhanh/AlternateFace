@@ -9,5 +9,5 @@
   ],
   "testRunner": "jest",
   "coverageAnalysis": "perTest",
-  "ignorePatterns": ["/src/tests/", "/src/examples/"]
+  "mutate": ["src/**/*.ts", "!src/tests/**", "!src/examples/**"]
 }
