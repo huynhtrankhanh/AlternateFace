@@ -14,7 +14,9 @@ import {
   definition,
   SentenceScheme,
   definitionInScheme,
+  ContextSentence,
   equal,
+  exported,
 } from "../../theoremProver";
 import { List } from "immutable";
 
@@ -47,6 +49,13 @@ const D: Context = {
   freeVariableCount: 0n,
   definitions: List(),
 };
+
+const E = (sentences: ContextSentence[]): Context => ({
+  sentences: List(sentences),
+  goal: undefined,
+  freeVariableCount: 0n,
+  definitions: List(),
+});
 
 // Last field: true if valid, false otherwise.
 export type TestCase = [Context, Sentence | SentenceScheme, boolean];
@@ -669,6 +678,117 @@ const tests: TestCase[] = [
         )
       ),
     },
+    false,
+  ],
+  [
+    E([
+      {
+        exported: false,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+    ]),
+    member(exported(0n), exported(0n)),
+    false,
+  ],
+  [
+    E([
+      {
+        exported: true,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+    ]),
+    member(exported(0n), exported(0n)),
+    true,
+  ],
+  [
+    E([
+      {
+        exported: false,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+    ]),
+    member(exported(-16n), exported(0n)),
+    false,
+  ],
+  [D, member(exported(0n), exported(0n)), false],
+  [
+    E([
+      {
+        exported: true,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+    ]),
+    member(exported(0n), exported(1n)),
+    false,
+  ],
+  [
+    E([
+      {
+        exported: false,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+      {
+        exported: true,
+        sentence: exists(not(forall(member(bound(0n), bound(0n))))),
+      },
+    ]),
+    member(exported(0n), exported(1n)),
+    false,
+  ],
+  [
+    E([
+      {
+        exported: false,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+      {
+        exported: true,
+        sentence: exists(not(forall(member(bound(0n), bound(0n))))),
+      },
+    ]),
+    member(exported(1n), exported(1n)),
+    true,
+  ],
+  [
+    E([
+      {
+        exported: false,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+      {
+        exported: false,
+        sentence: exists(not(forall(member(bound(0n), bound(0n))))),
+      },
+    ]),
+    member(exported(0n), exported(1n)),
+    false,
+  ],
+  [
+    E([
+      {
+        exported: false,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+      {
+        exported: true,
+        sentence: exists(not(forall(member(bound(0n), bound(0n))))),
+      },
+    ]),
+    member(exported(0n), exported(2n)),
+    false,
+  ],
+  [
+    E([
+      {
+        exported: false,
+        sentence: exists(forall(member(bound(0n), bound(0n)))),
+      },
+      {
+        exported: true,
+        sentence: not(forall(member(bound(0n), bound(0n)))),
+      },
+    ]),
+    member(exported(1n), exported(1n)),
     false,
   ],
 ];
