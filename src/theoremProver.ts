@@ -993,7 +993,7 @@ export function startInteractiveSession() {
 
       if (!isNonnegativeInteger(parameterCount)) return "failed";
 
-      if (foldOrUnfold === "fold") {
+      if (foldOrUnfold === "unfold") {
         const toInsert = wrap(
           imply(
             {
@@ -1014,7 +1014,7 @@ export function startInteractiveSession() {
         return BigInt(sentences.size);
       }
 
-      if (foldOrUnfold === "unfold") {
+      if (foldOrUnfold === "fold") {
         const toInsert = wrap(
           imply(dfs(sentence), {
             type: "use definition",
