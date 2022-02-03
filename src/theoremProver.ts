@@ -408,7 +408,7 @@ export function startInteractiveSession() {
       };
 
       if (a.type === "member" || a.type === "equal") {
-        return { type: "member", a: replace(a.a), b: replace(a.b) };
+        return { type: a.type, a: replace(a.a), b: replace(a.b) };
       }
 
       if (a.type === "forall" || a.type === "exists")
