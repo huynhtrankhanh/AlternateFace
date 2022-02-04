@@ -55,7 +55,7 @@ const serializeSentence = (a: Sentence) => {
         return `(witness ${x.sentenceIndex})`;
       if (type === "bound") return `${x.index}`;
       if (type === "definition parameter") return `(parameter ${x.index})`;
-      throw new Error(`This shouldn't happen. Unhandled type: ${type}`);
+      return checkForExhaustiveness(type);
     };
 
     if (a.type === "use definition")
