@@ -161,6 +161,44 @@ const checkForExhaustiveness = (_: never): never => {
   throw new Error("This shouldn't happen");
 };
 
+// This code doesn't check whether the variable is unbound (free or exported).
+// This is the responsibility of the caller.
+export const substituteIntoBinder = (a: Sentence, b: Variable): Sentence => {
+  if (a.type !== "forall" && a.type !== "exists")
+    throw new Error("This shouldn't happen.");
+
+  const dfs = (a: Sentence, depth: bigint = 0n): Sentence => {
+    const replace = (a: Variable): Variable => {
+      if (a.type !== "bound") return a;
+      if (a.index === depth) return b;
+      return { index: a.index, type: "bound" };
+    };
+
+    if (a.type === "member" || a.type === "equal") {
+      return { type: a.type, a: replace(a.a), b: replace(a.b) };
+    }
+
+    if (a.type === "forall" || a.type === "exists")
+      return { type: a.type, content: dfs(a.content, depth + 1n) };
+
+    if (a.type === "not")
+      return { type: a.type, content: dfs(a.content, depth) };
+
+    if (a.type === "and" || a.type === "or" || a.type === "imply")
+      return { type: a.type, a: dfs(a.a, depth), b: dfs(a.b, depth) };
+
+    if (
+      a.type === "use definition" ||
+      a.type === "use definition in sentence scheme"
+    )
+      return { ...a, parameters: a.parameters.map(replace) };
+
+    return checkForExhaustiveness(a);
+  };
+
+  return dfs(a.content);
+};
+
 export function startInteractiveSession() {
   const contexts: Context[] = [
     {
@@ -394,42 +432,6 @@ export function startInteractiveSession() {
     if (sentence.type === "sentence scheme")
       return validateSentence(sentence.content, sentence.parameterCounts, 0n);
     return validateSentence(sentence, [], 0n);
-  };
-
-  const substituteIntoBinder = (a: Sentence, b: Variable): Sentence => {
-    if (a.type !== "forall" && a.type !== "exists")
-      throw new Error("This shouldn't happen.");
-
-    const dfs = (a: Sentence, depth: bigint = 0n): Sentence => {
-      const replace = (a: Variable): Variable => {
-        if (a.type !== "bound") return a;
-        if (a.index === depth) return b;
-        return { index: a.index, type: "bound" };
-      };
-
-      if (a.type === "member" || a.type === "equal") {
-        return { type: a.type, a: replace(a.a), b: replace(a.b) };
-      }
-
-      if (a.type === "forall" || a.type === "exists")
-        return { type: a.type, content: dfs(a.content, depth + 1n) };
-
-      if (a.type === "not")
-        return { type: a.type, content: dfs(a.content, depth) };
-
-      if (a.type === "and" || a.type === "or" || a.type === "imply")
-        return { type: a.type, a: dfs(a.a, depth), b: dfs(a.b, depth) };
-
-      if (
-        a.type === "use definition" ||
-        a.type === "use definition in sentence scheme"
-      )
-        return { ...a, parameters: a.parameters.map(replace) };
-
-      return checkForExhaustiveness(a);
-    };
-
-    return dfs(a.content);
   };
 
   const isFreeInContext = (variable: Variable): boolean => {
