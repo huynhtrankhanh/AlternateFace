@@ -41,7 +41,7 @@ export type SentenceScheme = {
   content: Sentence;
 };
 
-const serializeSentence = (a: Sentence) => {
+export const serializeSentence = (a: Sentence) => {
   const dfs = (a: Sentence): string => {
     if (a.type === "forall" || a.type === "exists" || a.type === "not")
       return `(${a.type} ${dfs(a.content)})`;
