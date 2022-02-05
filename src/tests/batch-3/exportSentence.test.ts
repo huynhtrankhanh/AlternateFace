@@ -32,6 +32,7 @@ test("refuses to export sentences that can't be exported", () => {
   session.contexts[0].freeVariableCount = 1n;
 
   expect(session.exportSentence(0n)).toBe("failed");
+  expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
 });
 
 test("canExportSentence works correctly", () => {
@@ -47,6 +48,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("failed");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
   }
 
   {
@@ -58,6 +60,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("successful");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(true);
   }
 
   {
@@ -72,6 +75,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("successful");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(true);
   }
 
   {
@@ -86,6 +90,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("failed");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
   }
 
   {
@@ -100,6 +105,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("successful");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(true);
   }
 
   {
@@ -114,6 +120,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("failed");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
   }
 
   {
@@ -128,6 +135,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("successful");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(true);
   }
 
   {
@@ -142,6 +150,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("successful");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(true);
   }
 
   {
@@ -156,6 +165,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("successful");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(true);
   }
 
   {
@@ -170,6 +180,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("failed");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
   }
 
   {
@@ -191,6 +202,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("failed");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
   }
 
   {
@@ -214,6 +226,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("failed");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
   }
 
   {
@@ -237,6 +250,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("successful");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(true);
   }
 
   {
@@ -258,6 +272,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("successful");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(true);
   }
 
   {
@@ -279,6 +294,7 @@ test("canExportSentence works correctly", () => {
     session.contexts[0].freeVariableCount = 1n;
 
     expect(session.exportSentence(0n)).toBe("failed");
+    expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
   }
 
   {
@@ -291,6 +307,7 @@ test("canExportSentence works correctly", () => {
       )
     );
     expect(session.exportDefinition(0n)).toBe("successful");
+    expect(session.contexts[0].definitions.get(0)?.exported).toBe(true);
   }
 
   {
@@ -301,5 +318,6 @@ test("canExportSentence works correctly", () => {
       and(member(free(0n), parameter(1n)), member(parameter(1n), parameter(2n)))
     );
     expect(session.exportDefinition(0n)).toBe("failed");
+    expect(session.contexts[0].definitions.get(0)?.exported).toBe(false);
   }
 });
