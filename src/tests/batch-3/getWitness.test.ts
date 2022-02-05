@@ -41,7 +41,7 @@ test("getWitness correctly creates a new sentence", () => {
   {
     const result = session.getWitness(0n);
 
-    if (result === "failed") throw new Error("This shouldn't happen");
+    if (result === "failed") throw new Error("This shouldn't happen.");
 
     const { witnessIndex, sentenceIndex } = result;
 
@@ -59,7 +59,7 @@ test("getWitness correctly creates a new sentence", () => {
   {
     const result = session.getWitness(0n);
 
-    if (result === "failed") throw new Error("This shouldn't happen");
+    if (result === "failed") throw new Error("This shouldn't happen.");
 
     const { witnessIndex, sentenceIndex } = result;
 

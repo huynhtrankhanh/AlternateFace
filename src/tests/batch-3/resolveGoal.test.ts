@@ -4,7 +4,6 @@ import {
   exists,
   forall,
   member,
-  serializeSentence,
   startInteractiveSession,
 } from "../../theoremProver";
 
