@@ -52,6 +52,8 @@ test("substituteIntoForall correctly substitutes the variable", () => {
     member(free(0n), free(0n))
   );
 
+  expect(session.contexts[0].sentences.get(1)?.exported).toBe(false);
+
   session.contexts[0].sentences = session.contexts[0].sentences.push({
     sentence: exists(member(bound(0n), bound(0n))),
     exported: true,
@@ -64,6 +66,8 @@ test("substituteIntoForall correctly substitutes the variable", () => {
   expect(session.contexts[0].sentences.get(3)?.sentence).toStrictEqual(
     member(exported(2n), exported(2n))
   );
+
+  expect(session.contexts[0].sentences.get(3)?.exported).toBe(false);
 });
 
 test("substituteIntoForall rejects invalid variables", () => {
@@ -75,6 +79,8 @@ test("substituteIntoForall rejects invalid variables", () => {
   });
 
   expect(session.substituteIntoForall(0n, free(1n))).toBe("failed");
+  expect(session.substituteIntoForall(0n, free(-1n))).toBe("failed");
+  expect(session.substituteIntoForall(0n, free(-2n))).toBe("failed");
   expect(session.substituteIntoForall(0n, bound(1n))).toBe("failed");
   expect(session.substituteIntoForall(0n, bound(0n))).toBe("failed");
   expect(session.substituteIntoForall(0n, bound(-1n))).toBe("failed");
@@ -83,5 +89,10 @@ test("substituteIntoForall rejects invalid variables", () => {
   expect(session.substituteIntoForall(0n, exported(0n))).toBe("failed");
   expect(session.substituteIntoForall(0n, exported(-1n))).toBe("failed");
   (session.contexts[0].sentences.get(0) as any).exported = true;
+  expect(session.substituteIntoForall(0n, exported(0n))).toBe("failed");
+  (session.contexts[0].sentences.get(0) as any).sentence = exists(
+    member(bound(0n), bound(0n))
+  );
+  (session.contexts[0].sentences.get(0) as any).exported = false;
   expect(session.substituteIntoForall(0n, exported(0n))).toBe("failed");
 });

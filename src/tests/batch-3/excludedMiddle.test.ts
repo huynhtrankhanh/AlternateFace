@@ -26,4 +26,5 @@ test("if sentence validation succeeds, excludedMiddle adds a new sentence", () =
       not(forall(member(bound(0n), bound(0n))))
     )
   );
+  expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
 });

@@ -56,6 +56,8 @@ test("resolveGoal succeeds if sentence matches goal", () => {
   expect(session.contexts[0].sentences.get(0)?.sentence).toStrictEqual(
     forall(member(bound(0n), bound(0n)))
   );
+
+  expect(session.contexts[0].sentences.get(0)?.exported).toBe(false);
 });
 
 test("resolveGoal fails if sentence doesn't match goal", () => {
